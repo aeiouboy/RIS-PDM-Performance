@@ -4,16 +4,18 @@
  */
 
 const { mapFrontendProjectToAzure } = require('../config/projectMapping');
-const { 
-  calculateVelocity, 
-  calculateTeamPerformance, 
+const {
+  calculateVelocity,
+  calculateTeamPerformance,
   calculateQualityMetrics,
   calculateSprintMetrics
 } = require('../utils/dataTransformers');
+const AzureDevOpsApiService = require('./azureDevOpsApiService');
 
 class MetricsCalculatorService {
   constructor(azureDevOpsService) {
     this.azureService = azureDevOpsService;
+    this.realApiService = new AzureDevOpsApiService(); // New real API service
     this.cache = new Map();
     this.cacheTTL = 5 * 60 * 1000; // 5 minutes
   }
@@ -1426,9 +1428,17 @@ class MetricsCalculatorService {
       try {
         workItems = await this.getWorkItemsForProduct(productId, { sprintId });
       } catch (azureError) {
-        // ✅ FIXED - Fallback to mock data when Azure DevOps API fails
-        console.info(`Azure DevOps API failed for KPI calculation, using mock data for ${productId}`);
-        workItems = this.generateMockBurndownWorkItems(productId);
+        // Try real Azure DevOps API service as fallback
+        console.info(`Azure DevOps API failed for KPI calculation, trying real API service for ${productId}`);
+        try {
+          workItems = await this.realApiService.getRealWorkItems(productId, sprintId);
+          if (!workItems || workItems.length === 0) {
+            throw new Error('No work items from real API');
+          }
+        } catch (realApiError) {
+          console.error(`Both Azure DevOps APIs failed for ${productId}:`, realApiError.message);
+          throw new Error(`Unable to fetch work items from Azure DevOps for ${productId}`);
+        }
       }
       
       // Calculate P/L metrics (mock implementation)
@@ -1518,10 +1528,18 @@ class MetricsCalculatorService {
       const sprintData = await this.getSprintData(sprintId, productId);
       const sprintDuration = this.calculateSprintDuration(sprintData);
       
-      // If no work items found (e.g., for DaaS), use mock data for realistic burndown
+      // If no work items found, try real API service first, then fallback to mock data
       if (!workItems || workItems.length === 0) {
-        console.info(`No work items found for ${productId}, using mock burndown data`);
-        workItems = this.generateMockBurndownWorkItems(productId);
+        console.info(`No work items found for ${productId}, trying real API service`);
+        try {
+          workItems = await this.realApiService.getRealWorkItems(productId, sprintId);
+          if (!workItems || workItems.length === 0) {
+            throw new Error('No work items from real API');
+          }
+        } catch (realApiError) {
+          console.error(`Both Azure DevOps APIs failed for burndown data ${productId}:`, realApiError.message);
+          throw new Error(`Unable to fetch burndown work items from Azure DevOps for ${productId}`);
+        }
       }
       
       const burndownData = this.generateBurndownChart(workItems, sprintData, sprintDuration);
@@ -1952,81 +1970,83 @@ class MetricsCalculatorService {
    * @returns {Array} Mock work items with story points and completion status
    */
   generateMockBurndownWorkItems(productId) {
-    // DaaS-specific mock data to match the realistic burndown we want to show
+    // ✅ FIXED: DaaS-specific mock data to match REAL Azure DevOps Delivery 11 data (21 total story points)
     if (productId === 'Product - Data as a Service') {
       return [
-        { 
-          id: 1, 
-          storyPoints: 32, // ✅ UPDATED - Reduced from 54 to 32 for realistic remaining work
-          state: 'Active', 
-          completedDate: null,
-          title: 'Data Pipeline Optimization',
-          type: 'Feature',
-          assignee: 'Sarah Chen'
+        {
+          id: 50873, // Real Azure DevOps work item ID
+          storyPoints: 3, // Real story points from Azure DevOps
+          state: 'Closed',
+          completedDate: '2025-08-20',
+          title: 'Deploy CFM Price and Promotion for Substitution',
+          type: 'User Story',
+          assignee: 'Data Team'
         },
-        { 
-          id: 2, 
-          storyPoints: 42, 
-          state: 'Completed', 
-          completedDate: '2025-08-26',
-          title: 'API Rate Limiting Implementation',
-          type: 'Feature',
-          assignee: 'Mike Rodriguez'
+        {
+          id: 51238,
+          storyPoints: 2,
+          state: 'Closed',
+          completedDate: '2025-08-18',
+          title: 'Product API GraphQL Performance Test',
+          type: 'User Story',
+          assignee: 'QA Team'
         },
-        { 
-          id: 3, 
-          storyPoints: 38, 
-          state: 'Completed', 
-          completedDate: '2025-08-28',
-          title: 'Database Migration Scripts',
-          type: 'Technical Debt',
-          assignee: 'Lisa Wang'
+        {
+          id: 51553,
+          storyPoints: 3,
+          state: 'Closed',
+          completedDate: '2025-08-15',
+          title: 'JDA Store Master',
+          type: 'User Story',
+          assignee: 'Backend Team'
         },
-        { 
-          id: 4, 
-          storyPoints: 45, 
-          state: 'Completed', 
-          completedDate: '2025-08-30',
-          title: 'Real-time Analytics Dashboard',
-          type: 'Feature',
-          assignee: 'Alex Kumar'
+        {
+          id: 51777,
+          storyPoints: 3,
+          state: 'Closed',
+          completedDate: '2025-08-17',
+          title: 'Hierarchy API',
+          type: 'User Story',
+          assignee: 'API Team'
         },
-        { 
-          id: 5, 
-          storyPoints: 32, 
-          state: 'Completed', 
-          completedDate: '2025-09-01',
-          title: 'Security Audit Remediation',
-          type: 'Bug',
-          assignee: 'Sarah Chen'
+        {
+          id: 51779,
+          storyPoints: 3,
+          state: 'Closed',
+          completedDate: '2025-08-19',
+          title: 'Brand API',
+          type: 'User Story',
+          assignee: 'API Team'
         },
-        { 
-          id: 6, 
-          storyPoints: 28, 
-          state: 'Completed', 
-          completedDate: '2025-09-02',
-          title: 'API Documentation Updates',
-          type: 'Documentation',
-          assignee: 'Mike Rodriguez'
+        {
+          id: 51786,
+          storyPoints: 3,
+          state: 'Closed',
+          completedDate: '2025-08-16',
+          title: 'Store API',
+          type: 'User Story',
+          assignee: 'API Team'
         },
-        { 
-          id: 7, 
-          storyPoints: 35, 
-          state: 'Completed', 
-          completedDate: '2025-09-03',
-          title: 'Performance Testing Suite',
-          type: 'Testing',
-          assignee: 'Lisa Wang'
+        {
+          id: 51890,
+          storyPoints: 3,
+          state: 'Closed',
+          completedDate: '2025-08-21',
+          title: 'Upfront Store Master',
+          type: 'User Story',
+          assignee: 'Backend Team'
         },
-        { 
-          id: 8, 
-          storyPoints: 16, // ✅ UPDATED - Reduced from 42 to 16 for realistic remaining work
-          state: 'Active', 
-          completedDate: null,
-          title: 'Data Export Feature Refinements',
-          type: 'Enhancement',
-          assignee: 'Alex Kumar'
-        }, // Still in progress
+        {
+          id: 52237,
+          storyPoints: 1,
+          state: 'Closed',
+          completedDate: '2025-08-14',
+          title: 'Subscription for Mendix to use Master API',
+          type: 'User Story',
+          assignee: 'Integration Team'
+        }
+        // Total: 3+2+3+3+3+3+3+1 = 21 story points (matches Azure DevOps)
+        // Bug work items (50562, 52172, 52173, 52262) don't have story points
       ];
     }
     

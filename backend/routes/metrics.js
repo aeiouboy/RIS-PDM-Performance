@@ -4,6 +4,7 @@ const router = express.Router();
 const logger = require('../utils/logger');
 const NodeCache = require('node-cache');
 const AzureDevOpsService = require('../src/services/azureDevOpsService');
+const AzureDevOpsApiService = require('../src/services/azureDevOpsApiService');
 const cacheService = require('../src/services/cacheService');
 const MetricsCalculatorService = require('../src/services/metricsCalculator');
 const BugClassificationService = require('../src/services/bugClassificationService');
@@ -24,6 +25,7 @@ const RATE_LIMIT = {
 
 // Initialize Azure DevOps and Metrics services
 const azureService = new AzureDevOpsService(azureDevOpsConfig);
+const azureApiService = new AzureDevOpsApiService(); // New real API service
 const projectResolver = new ProjectResolutionService(azureService);
 const metricsCalculator = new MetricsCalculatorService(azureService, projectResolver);
 const bugClassificationService = new BugClassificationService(azureService);
@@ -2115,20 +2117,20 @@ router.get('/sprints',
             },
             {
               id: 'delivery-11',
-              name: 'Delivery 11', 
-              description: 'Previous Sprint',
+              name: 'Delivery 11',
+              description: 'Previous Sprint (Aug 11-22)',
               status: 'completed',
-              startDate: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              endDate: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+              startDate: '2025-08-11', // ✅ FIXED: Real Azure DevOps date
+              endDate: '2025-08-22',   // ✅ FIXED: Real Azure DevOps date
               path: 'Product - Data as a Service\\Delivery 11'
             },
             {
               id: 'delivery-10',
               name: 'Delivery 10',
-              description: 'Previous Sprint',
-              status: 'completed', 
-              startDate: new Date(Date.now() - 42 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              endDate: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+              description: 'Previous Sprint (Jul 28 - Aug 8)',
+              status: 'completed',
+              startDate: '2025-07-28', // ✅ FIXED: Real Azure DevOps date
+              endDate: '2025-08-08',   // ✅ FIXED: Real Azure DevOps date
               path: 'Product - Data as a Service\\Delivery 10'
             },
             {
@@ -2214,47 +2216,57 @@ router.get('/sprints',
         }
       };
 
-      // Get iterations from Azure DevOps with timeout
+      // Get iterations from Azure DevOps with timeout - try real API first, then fallback
       let iterations;
       try {
-        // 🎯 FIXED: Ensure we always pass a team name (required for getIterations)
+        // Try the new Azure DevOps API service first
+        logger.info('Attempting to fetch sprints from real Azure DevOps API...');
+        const realSprints = await azureApiService.getRealSprintData(project);
+        if (realSprints && realSprints.length > 0) {
+          logger.info(`Successfully got ${realSprints.length} sprints from real API`);
+
+          // Cache the results
+          metricsCache.set(cacheKey, realSprints);
+
+          return res.json({
+            success: true,
+            data: realSprints,
+            cached: false,
+            source: 'real_api',
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        // Fallback to existing Azure service
+        logger.info('Real API returned no sprints, trying existing Azure service...');
         const resolvedTeamName = teamName || mapFrontendProjectToTeam(productId || project) || 'PMP Developer Team';
         logger.info(`Using team name: ${resolvedTeamName}`);
-        
+
         // Set a shorter timeout for the iterations call to avoid frontend timeouts
         const iterationPromise = azureService.getIterations(resolvedTeamName, 'all', project); // Get all iterations, not just current
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Azure DevOps timeout')), 5000)
         );
-        
+
         iterations = await Promise.race([iterationPromise, timeoutPromise]);
       } catch (error) {
-        logger.warn('Failed to fetch iterations from Azure DevOps, using mock data:', error.message);
-        
-        // Return mock sprint data immediately when Azure DevOps fails
-        const mockSprints = generateMockSprints(project);
-        logger.info('Returning mock sprint data due to Azure DevOps error');
-        return res.json({
-          success: true,
-          data: mockSprints,
-          cached: false,
-          mock: true,
+        logger.error('Failed to fetch iterations from both APIs, no fallback available:', error.message);
+
+        return res.status(503).json({
+          success: false,
+          error: 'Azure DevOps service unavailable',
+          message: 'Unable to fetch sprint data from Azure DevOps API',
           timestamp: new Date().toISOString()
         });
       }
       
       if (!iterations || !Array.isArray(iterations) || iterations.length === 0) {
-        logger.warn('No iterations found', { project, teamName });
-        
-        // Return mock sprint data as fallback
-        const mockSprints = generateMockSprints(project);
-        logger.info('Returning mock sprint data due to no iterations found');
-        
-        return res.json({
-          success: true,
-          data: mockSprints,
-          cached: false,
-          mock: true,
+        logger.error('No iterations found from Azure DevOps API', { project, teamName });
+
+        return res.status(404).json({
+          success: false,
+          error: 'No sprint data available',
+          message: `No iterations found for project: ${project}`,
           timestamp: new Date().toISOString()
         });
       }
