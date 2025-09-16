@@ -1,51 +1,65 @@
 import React, { useMemo } from 'react';
 
-// Memoized color variants for better performance
+// Enhanced color variants with better accessibility and visual hierarchy
 const COLOR_VARIANTS = {
   blue: {
-    bg: 'bg-blue-50',
-    icon: 'bg-blue-100 text-blue-600',
-    value: 'text-blue-600'
+    bg: 'bg-primary-50/50',
+    border: 'border-primary-200/50',
+    icon: 'bg-primary-100 text-primary-600',
+    value: 'text-primary-600',
+    accent: 'bg-primary-500'
   },
   green: {
-    bg: 'bg-green-50',
-    icon: 'bg-green-100 text-green-600',
-    value: 'text-green-600'
+    bg: 'bg-success-50/50',
+    border: 'border-success-200/50',
+    icon: 'bg-success-100 text-success-600',
+    value: 'text-success-600',
+    accent: 'bg-success-500'
   },
   orange: {
-    bg: 'bg-orange-50',
-    icon: 'bg-orange-100 text-orange-600',
-    value: 'text-orange-600'
+    bg: 'bg-warning-50/50',
+    border: 'border-warning-200/50',
+    icon: 'bg-warning-100 text-warning-600',
+    value: 'text-warning-600',
+    accent: 'bg-warning-500'
   },
   purple: {
-    bg: 'bg-purple-50',
+    bg: 'bg-purple-50/50',
+    border: 'border-purple-200/50',
     icon: 'bg-purple-100 text-purple-600',
-    value: 'text-purple-600'
+    value: 'text-purple-600',
+    accent: 'bg-purple-500'
   },
   red: {
-    bg: 'bg-red-50',
-    icon: 'bg-red-100 text-red-600',
-    value: 'text-red-600'
+    bg: 'bg-error-50/50',
+    border: 'border-error-200/50',
+    icon: 'bg-error-100 text-error-600',
+    value: 'text-error-600',
+    accent: 'bg-error-500'
   },
   gray: {
-    bg: 'bg-gray-50',
+    bg: 'bg-gray-50/50',
+    border: 'border-gray-200/50',
     icon: 'bg-gray-100 text-gray-600',
-    value: 'text-gray-600'
+    value: 'text-gray-600',
+    accent: 'bg-gray-500'
   }
 };
 
-const KPICard = React.memo(({ 
-  title, 
-  value, 
-  trend, 
-  trendValue, 
-  suffix = '', 
-  prefix = '', 
-  format = 'number', 
-  icon, 
+const KPICard = React.memo(({
+  title,
+  value,
+  trend,
+  trendValue,
+  suffix = '',
+  prefix = '',
+  format = 'number',
+  icon,
   color = 'blue',
   loading = false,
-  className = '' 
+  className = '',
+  'aria-label': ariaLabel,
+  onClick
 }) => {
   // Memoize color selection
   const colors = useMemo(() => COLOR_VARIANTS[color] || COLOR_VARIANTS.blue, [color]);
@@ -73,84 +87,142 @@ const KPICard = React.memo(({
     }
   }, [value, format, loading]);
 
-  // Memoize trend indicator to prevent unnecessary re-renders
+  // Enhanced trend indicator with better visual feedback
   const trendIcon = useMemo(() => {
     if (!trend || loading) return null;
-    
+
     const isPositive = trend > 0;
     const isNegative = trend < 0;
-    
+    const trendMagnitude = Math.abs(trend);
+    const isSignificant = trendMagnitude >= 5;
+
     if (isPositive) {
       return (
-        <div className="flex items-center text-green-600">
-          <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L10 4.414 4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-          </svg>
-          <span className="text-sm font-medium">
-            {trendValue || `+${Math.abs(trend).toFixed(1)}%`}
+        <div className={`flex items-center gap-1 px-2 py-1 rounded-full transition-colors ${
+          isSignificant ? 'bg-success-100 text-success-700' : 'bg-success-50 text-success-600'
+        }`}>
+          <div className="relative">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L10 4.414 4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+            </svg>
+            {isSignificant && (
+              <div className="absolute -top-1 -right-1 w-2 h-2 bg-success-500 rounded-full animate-pulse"></div>
+            )}
+          </div>
+          <span className="text-xs font-semibold">
+            {trendValue || `+${trendMagnitude.toFixed(1)}%`}
           </span>
         </div>
       );
     }
-    
+
     if (isNegative) {
       return (
-        <div className="flex items-center text-red-600">
-          <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L10 15.586l5.293-5.293a1 1 0 011.414 0z" clipRule="evenodd" />
-          </svg>
-          <span className="text-sm font-medium">
+        <div className={`flex items-center gap-1 px-2 py-1 rounded-full transition-colors ${
+          isSignificant ? 'bg-error-100 text-error-700' : 'bg-error-50 text-error-600'
+        }`}>
+          <div className="relative">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L10 15.586l5.293-5.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            {isSignificant && (
+              <div className="absolute -top-1 -right-1 w-2 h-2 bg-error-500 rounded-full animate-pulse"></div>
+            )}
+          </div>
+          <span className="text-xs font-semibold">
             {trendValue || `${trend.toFixed(1)}%`}
           </span>
         </div>
       );
     }
-    
+
     return (
-      <div className="flex items-center text-gray-500">
-        <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+      <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
           <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
         </svg>
-        <span className="text-sm font-medium">0%</span>
+        <span className="text-xs font-semibold">No change</span>
       </div>
     );
   }, [trend, trendValue, loading]);
 
   return (
-    <div className={`bg-white p-6 rounded-lg shadow-dashboard border hover:shadow-lg transition-shadow ${className}`}>
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">{title}</h3>
-          <div className="flex items-baseline space-x-2">
-            <p className={`text-3xl font-bold ${colors.value} ${loading ? 'animate-pulse' : ''}`}>
+    <div
+      className={`group relative backdrop-blur-lg bg-white/80 rounded-2xl border border-white/20 shadow-xl hover:shadow-2xl hover:scale-[1.02] focus-ring transition-all duration-300 overflow-hidden ${onClick ? 'cursor-pointer' : ''} ${className}`}
+      tabIndex={onClick ? "0" : undefined}
+      role={onClick ? "button" : "article"}
+      aria-label={ariaLabel || `${title}: ${formattedValue || 'Loading...'}`}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onClick(e);
+        }
+      }}
+      style={{
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
+        boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)'
+      }}
+    >
+      {/* Gradient Accent */}
+      <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-${color}-400 to-${color}-600`}></div>
+
+      {/* Subtle Pattern */}
+      <div className={`absolute inset-0 ${colors.bg} opacity-20`}></div>
+
+      {/* Card Content */}
+      <div className="relative p-6">
+        <div className="flex items-start justify-between">
+          <div className="flex-1 min-w-0">
+            {/* Title */}
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{title}</h3>
+              {loading && (
+                <div className="animate-spin rounded-full h-3 w-3 border-2 border-gray-300 border-t-gray-600"></div>
+              )}
+            </div>
+
+            {/* Value */}
+            <div className="mb-4">
               {loading ? (
-                <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+                <div className="space-y-2">
+                  <div className="skeleton h-10 w-24"></div>
+                  <div className="skeleton h-4 w-16"></div>
+                </div>
               ) : (
                 <>
-                  {prefix}
-                  {formattedValue}
-                  {suffix}
+                  <p className={`text-3xl font-bold ${colors.value} leading-none mb-1`}>
+                    {prefix}{formattedValue}{suffix}
+                  </p>
+                  {/* Trend Indicator */}
+                  {trendIcon && (
+                    <div className="flex items-center">
+                      {trendIcon}
+                    </div>
+                  )}
                 </>
               )}
-            </p>
+            </div>
           </div>
-          
-          {/* Trend Indicator */}
-          {!loading && trendIcon && (
-            <div className="mt-2">
-              {trendIcon}
+
+          {/* Icon */}
+          {icon && (
+            <div className={`flex-shrink-0 w-14 h-14 bg-gradient-to-br from-${color}-400 to-${color}-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300`}>
+              {typeof icon === 'string' ? (
+                <span className="text-2xl filter drop-shadow-md">{icon}</span>
+              ) : (
+                <div className="w-7 h-7 text-white">{icon}</div>
+              )}
             </div>
           )}
         </div>
-        
-        {/* Icon */}
-        {icon && (
-          <div className={`flex-shrink-0 w-12 h-12 ${colors.icon} rounded-lg flex items-center justify-center ml-4`}>
-            {typeof icon === 'string' ? (
-              <span className="text-2xl">{icon}</span>
-            ) : (
-              <div className="w-6 h-6">{icon}</div>
-            )}
+
+        {/* Loading Progress Bar */}
+        {loading && (
+          <div className="mt-4">
+            <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div className={`h-full ${colors.accent} rounded-full animate-pulse`} style={{ width: '60%' }}></div>
+            </div>
           </div>
         )}
       </div>

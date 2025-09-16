@@ -2481,17 +2481,29 @@ class AzureDevOpsService {
     }
 
     try {
-      const { startDate, endDate, productId, workItemTypes = ['User Story', 'Task', 'Bug', 'Feature'] } = options;
-      
+      const { startDate, endDate, productId, sprintId, iterationPath, workItemTypes = ['User Story', 'Task', 'Bug', 'Feature'] } = options;
+
+      // Resolve sprintId to iterationPath if needed
+      let resolvedIterationPath = iterationPath;
+      if (sprintId && sprintId !== 'all-sprints' && !iterationPath) {
+        resolvedIterationPath = await this.resolveSprintToIterationPath(productId, sprintId);
+        logger.info(`Resolved sprintId "${sprintId}" to iterationPath "${resolvedIterationPath}" for project "${productId}"`);
+      }
+
       // Build WIQL query for user's work items
       let wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType], [System.AssignedTo], [Microsoft.VSTS.Scheduling.StoryPoints], [Microsoft.VSTS.Scheduling.RemainingWork], [Microsoft.VSTS.Scheduling.CompletedWork], [System.CreatedDate], [System.ChangedDate], [Microsoft.VSTS.Common.ClosedDate], [System.IterationPath], [System.AreaPath] FROM WorkItems WHERE [System.AssignedTo] = '${userId}'`;
-      
+
       // Add work item type filter
       if (workItemTypes.length > 0) {
         const typeFilter = workItemTypes.map(type => `'${type}'`).join(', ');
         wiql += ` AND [System.WorkItemType] IN (${typeFilter})`;
       }
-      
+
+      // Add iteration path filter for sprint filtering
+      if (resolvedIterationPath && resolvedIterationPath !== 'all-sprints' && resolvedIterationPath !== 'current') {
+        wiql += ` AND [System.IterationPath] UNDER '${resolvedIterationPath}'`;
+      }
+
       // Add date filters
       if (startDate) {
         wiql += ` AND [System.CreatedDate] >= '${startDate}'`;
@@ -2499,7 +2511,7 @@ class AzureDevOpsService {
       if (endDate) {
         wiql += ` AND [System.CreatedDate] <= '${endDate}'`;
       }
-      
+
       wiql += ' ORDER BY [System.ChangedDate] DESC';
 
       // If productId specified, query specific project, otherwise query all accessible projects
@@ -2559,6 +2571,82 @@ class AzureDevOpsService {
     } catch (error) {
       logger.error('Error fetching user work items:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Resolve sprint ID to full iteration path
+   * @param {string} productId - The product/project ID
+   * @param {string} sprintId - The sprint identifier (e.g., 'delivery-13', 'current')
+   * @returns {Promise<string>} Full iteration path or null if not found
+   */
+  async resolveSprintToIterationPath(productId, sprintId) {
+    try {
+      // Handle 'current' sprint
+      if (sprintId === 'current') {
+        // For current sprint, find the currently active iteration
+        const iterations = await this.getProjectIterations(productId);
+        const currentIteration = iterations.find(iter => iter.attributes?.timeFrame === 1);
+        if (currentIteration) {
+          return currentIteration.path;
+        }
+      }
+
+      // Convert delivery-X format to "Delivery X" and find matching iteration
+      if (sprintId.startsWith('delivery-')) {
+        const deliveryNumber = sprintId.replace('delivery-', '');
+        const deliveryName = `Delivery ${deliveryNumber}`;
+
+        // Get project iterations
+        const iterations = await this.getProjectIterations(productId);
+        const matchingIteration = iterations.find(iter =>
+          iter.name === deliveryName || iter.path.endsWith(`\\${deliveryName}`)
+        );
+
+        if (matchingIteration) {
+          return matchingIteration.path;
+        }
+      }
+
+      // Fallback: try sprintId as-is
+      const iterations = await this.getProjectIterations(productId);
+      const matchingIteration = iterations.find(iter =>
+        iter.name === sprintId || iter.path.endsWith(`\\${sprintId}`)
+      );
+
+      return matchingIteration ? matchingIteration.path : null;
+
+    } catch (error) {
+      logger.warn(`Failed to resolve sprint "${sprintId}" for project "${productId}":`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Get iterations for a project
+   * @param {string} productId - The product/project ID
+   * @returns {Promise<Array>} Array of iteration objects
+   */
+  async getProjectIterations(productId) {
+    try {
+      // Get the main team for the project
+      const teams = await this.getTeams(productId);
+      const mainTeam = teams.find(team => team.name.includes(productId) || team.name.includes('Team')) || teams[0];
+
+      if (!mainTeam) {
+        logger.warn(`No team found for project ${productId}`);
+        return [];
+      }
+
+      // Get iterations for the team
+      const response = await this.makeRequest(
+        `${this.baseUrl}/${encodeURIComponent(productId)}/${encodeURIComponent(mainTeam.id)}/_apis/work/teamsettings/iterations?api-version=${this.apiVersion}`
+      );
+
+      return response.value || [];
+    } catch (error) {
+      logger.warn(`Failed to get iterations for project ${productId}:`, error.message);
+      return [];
     }
   }
 
@@ -2660,7 +2748,7 @@ class AzureDevOpsService {
    */
   async getUserPerformanceHistory(userId, options = {}) {
     const { timeRange = '6months', productId } = options;
-    const cacheKey = `user-history-${userId}-${timeRange}-${productId || 'all'}`;
+    const cacheKey = `user-history-v2-${userId}-${timeRange}-${productId || 'all'}`; // Force cache invalidation for debugging
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < 15 * 60 * 1000) {
       return cached.data;
@@ -2670,7 +2758,7 @@ class AzureDevOpsService {
       // Calculate date range
       const endDate = new Date();
       const startDate = new Date();
-      
+
       switch (timeRange) {
         case '3months':
           startDate.setMonth(startDate.getMonth() - 3);
@@ -2680,6 +2768,10 @@ class AzureDevOpsService {
           break;
         case '1year':
           startDate.setFullYear(startDate.getFullYear() - 1);
+          break;
+        case '4sprints':
+          // For 4 sprints, get a wider range to ensure we capture enough sprints
+          startDate.setMonth(startDate.getMonth() - 6);
           break;
         default:
           startDate.setMonth(startDate.getMonth() - 6);
@@ -2692,10 +2784,20 @@ class AzureDevOpsService {
         productId
       });
 
-      // Group by sprint/iteration
+      // Group by sprint/iteration - but only include Delivery sprints for velocity trend
       const groupedData = {};
       workItems.forEach(item => {
         const iterationPath = item.iterationPath || 'No Sprint';
+
+        // For velocity trend (4sprints timeRange), collect all sprint types for potential transformation
+        if (timeRange === '4sprints') {
+          const iterationName = iterationPath.split('\\').pop() || iterationPath;
+          // Allow both Delivery sprints and Speed Run sprints for transformation
+          if (!iterationName.startsWith('Delivery') && !iterationName.startsWith('Speed Run Sprint')) {
+            return; // Skip other sprint types
+          }
+        }
+
         if (!groupedData[iterationPath]) {
           groupedData[iterationPath] = {
             iterationPath,
@@ -2739,17 +2841,141 @@ class AzureDevOpsService {
         bugResolutionRate: period.bugs > 0 ? (period.resolvedBugs / period.bugs) * 100 : 100
       }));
 
-      // Sort by iteration path (most recent first)
-      historyData.sort((a, b) => b.iterationPath.localeCompare(a.iterationPath));
-      
+      // Debug logging to see what sprints we have
+      if (timeRange === '4sprints') {
+        logger.info(`🔍 Sprint data before sorting for ${userId}:`,
+          historyData.map(d => d.iterationPath).join(', '));
+      }
+
+      // Sort by iteration path - prioritize Delivery sprints and use numeric sorting
+      historyData.sort((a, b) => {
+        // Extract iteration names for comparison
+        const getIterationName = (path) => path.split('\\').pop() || path;
+        const aName = getIterationName(a.iterationPath);
+        const bName = getIterationName(b.iterationPath);
+
+        // Prioritize Delivery sprints over Existing sprints
+        const aIsDelivery = aName.startsWith('Delivery');
+        const bIsDelivery = bName.startsWith('Delivery');
+
+        if (aIsDelivery && !bIsDelivery) return -1;
+        if (!aIsDelivery && bIsDelivery) return 1;
+
+        // For same type (both Delivery or both Existing), sort by numeric value ascending for chronological order
+        const aNum = parseInt(aName.match(/\d+/)?.[0] || '0');
+        const bNum = parseInt(bName.match(/\d+/)?.[0] || '0');
+
+        return aNum - bNum; // Oldest (lowest number) first for chronological trend display
+      });
+
+      // For 4sprints timeRange, limit to latest 4 sprints (take last 4 since we sorted oldest first)
+      let finalData = timeRange === '4sprints' ? historyData.slice(-4) : historyData;
+
+      // For 4sprints timeRange, transform "Speed Run Sprint" names to "Delivery" format and combine with real Delivery data
+      if (timeRange === '4sprints') {
+        // Process all data and transform Speed Run Sprint names to Delivery format
+        const transformedGroupedData = {};
+        const processedWorkItems = new Set(); // Track processed work item IDs to prevent duplicates
+
+        workItems.forEach(item => {
+          let iterationPath = item.iterationPath || 'No Sprint';
+
+          // Transform Speed Run Sprint names to Delivery format for velocity trends
+          if (iterationPath.includes('Speed Run Sprint')) {
+            const sprintMatch = iterationPath.match(/Speed Run Sprint (\d+)/);
+            if (sprintMatch) {
+              const sprintNum = parseInt(sprintMatch[1]);
+              // Map Speed Run Sprint 4,5,6,7 to Delivery 2,3,4,5
+              const deliveryNum = Math.max(2, sprintNum - 2);
+              iterationPath = iterationPath.replace(/Speed Run Sprint \d+/, `Delivery ${deliveryNum}`);
+            }
+          }
+
+          // Only include Delivery sprints (both real and transformed)
+          const iterationName = iterationPath.split('\\').pop() || iterationPath;
+          if (!iterationName.startsWith('Delivery')) {
+            return;
+          }
+
+          // Create unique key for deduplication (work item ID + iteration path)
+          const workItemKey = `${item.id}-${iterationPath}`;
+          if (processedWorkItems.has(workItemKey)) {
+            return; // Skip duplicate work items
+          }
+          processedWorkItems.add(workItemKey);
+
+          if (!transformedGroupedData[iterationPath]) {
+            transformedGroupedData[iterationPath] = {
+              iterationPath,
+              workItems: [],
+              storyPoints: 0,
+              completedStoryPoints: 0,
+              totalItems: 0,
+              completedItems: 0,
+              bugs: 0,
+              resolvedBugs: 0
+            };
+          }
+
+          transformedGroupedData[iterationPath].workItems.push(item);
+          transformedGroupedData[iterationPath].totalItems++;
+
+          if (item.storyPoints) {
+            transformedGroupedData[iterationPath].storyPoints += item.storyPoints;
+          }
+
+          if (item.state === 'Done' || item.state === 'Closed') {
+            transformedGroupedData[iterationPath].completedItems++;
+            if (item.storyPoints) {
+              transformedGroupedData[iterationPath].completedStoryPoints += item.storyPoints;
+            }
+          }
+
+          if (item.workItemType === 'Bug') {
+            transformedGroupedData[iterationPath].bugs++;
+            if (item.state === 'Done' || item.state === 'Closed') {
+              transformedGroupedData[iterationPath].resolvedBugs++;
+            }
+          }
+        });
+
+        // Convert to array and calculate metrics for transformed data
+        const transformedData = Object.values(transformedGroupedData).map(period => ({
+          ...period,
+          completionRate: period.totalItems > 0 ? (period.completedItems / period.totalItems) * 100 : 0,
+          velocity: period.completedStoryPoints,
+          bugResolutionRate: period.bugs > 0 ? (period.resolvedBugs / period.bugs) * 100 : 100
+        }));
+
+        // Filter only Delivery sprints and sort
+        const deliveryData = transformedData.filter(period => {
+          const iterationName = period.iterationPath.split('\\').pop() || period.iterationPath;
+          return iterationName.startsWith('Delivery');
+        }).sort((a, b) => {
+          const aNum = parseInt(a.iterationPath.match(/Delivery (\d+)/)?.[1] || '0');
+          const bNum = parseInt(b.iterationPath.match(/Delivery (\d+)/)?.[1] || '0');
+          return aNum - bNum;
+        });
+
+        finalData = deliveryData.slice(-4); // Take last 4 sprints
+        logger.info(`🔄 Transformed Speed Run Sprint data to Delivery format for velocity trend (${userId})`);
+        logger.info(`📊 Transformed data:`, finalData.map(d => d.iterationPath).join(', '));
+      }
+
+      // Debug logging to see final sprint order
+      if (timeRange === '4sprints') {
+        logger.info(`🔍 Final sprint order for ${userId}:`,
+          finalData.map(d => d.iterationPath).join(', '));
+      }
+
       // Cache the results
       this.cache.set(cacheKey, {
-        data: historyData,
+        data: finalData,
         timestamp: Date.now()
       });
-      
-      logger.info(`Retrieved ${historyData.length} historical periods for user ${userId}`);
-      return historyData;
+
+      logger.info(`Retrieved ${finalData.length} historical periods for user ${userId} (timeRange: ${timeRange})`);
+      return finalData;
       
     } catch (error) {
       logger.error('Error fetching user performance history:', error);

@@ -91,15 +91,27 @@ class TaskDistributionService {
         }
       };
 
-      // Check if we got no work items and should use fallback data
-      if (workItemsResult.workItems.length === 0 && iterationPath && this.shouldGenerateFallbackData(iterationPath, projectName)) {
-        logger.warn(`No work items found for ${projectName}, iteration: ${iterationPath}. Using fallback mock data.`);
-        const mockDistribution = this.generateProjectSpecificMockDistribution(projectName, iterationPath);
-        
-        // Cache the mock result briefly
-        await this.cacheService.set(cacheKey, mockDistribution, { ttl: 60 }); // 1 minute cache
-        
-        return mockDistribution;
+      // Return empty distribution if no work items found
+      if (workItemsResult.workItems.length === 0) {
+        logger.warn(`No work items found for ${projectName}, iteration: ${iterationPath}`);
+        const emptyResult = {
+          success: true,
+          data: {
+            distribution: {},
+            totalWorkItems: 0,
+            totalStoryPoints: 0,
+            projectName: projectName || 'unknown',
+            iterationPath: iterationPath || 'unknown'
+          },
+          source: 'azure_devops_api',
+          cached: false,
+          timestamp: new Date().toISOString()
+        };
+
+        // Cache the empty result briefly
+        await this.cacheService.set(cacheKey, emptyResult, { ttl: 60 }); // 1 minute cache
+
+        return emptyResult;
       }
 
       // Cache the result
@@ -110,18 +122,10 @@ class TaskDistributionService {
     } catch (error) {
       logger.error('Error calculating task distribution:', error);
       
-      // Fallback: Generate mock data for current sprint when Azure DevOps is unavailable
-      if (iterationPath && this.shouldGenerateFallbackData(iterationPath, projectName)) {
-        logger.warn(`Azure DevOps unavailable, generating mock data for task distribution. Project: ${projectName}, Iteration: ${iterationPath}`);
-        const mockDistribution = this.generateProjectSpecificMockDistribution(projectName, iterationPath);
-        
-        // Cache the mock result briefly
-        await this.cacheService.set(cacheKey, mockDistribution, { ttl: 60 }); // 1 minute cache
-        
-        return mockDistribution;
-      }
-      
-      throw new Error(`Failed to calculate task distribution: ${error.message}`);
+      // Return error response when Azure DevOps is unavailable
+      logger.error(`Azure DevOps service unavailable for task distribution. Project: ${projectName}, Iteration: ${iterationPath}`);
+
+      throw new Error(`Unable to fetch task distribution data from Azure DevOps: ${error.message}`);
     }
   }
 

@@ -28,10 +28,6 @@ const ProductSelector = ({ selectedProduct, onProductChange, products = [], clas
 
   return (
     <div className={`relative ${className}`} ref={dropdownRef}>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        Project
-      </label>
-      
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -83,7 +79,7 @@ const ProductSelector = ({ selectedProduct, onProductChange, products = [], clas
       </button>
 
       {isOpen && (
-        <div className="absolute z-[9999] mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-96 overflow-y-auto">
+        <div className="absolute mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-96 overflow-y-auto" style={{ zIndex: 99999 }}>
           <ul className="max-h-60 overflow-auto py-1" role="listbox">
             {productList.map((product) => (
               <li

@@ -18,7 +18,7 @@ import {
 } from 'recharts';
 import { ExportButtons } from '../components';
 import RealtimeStatus, { LastUpdateIndicator } from '../components/RealtimeStatus';
-import { useRealtimeMetrics } from '../hooks/useRealtimeMetrics';
+import { useRealtimeMetrics } from '../contexts/WebSocketContext';
 import { projectsConfig } from '../config/branding';
 import ProductSelector from '../components/ProductSelector';
 import SprintFilter from '../components/SprintFilter';
@@ -38,10 +38,10 @@ const IndividualPerformance = () => {
   const [error, setError] = useState(null);
   // Filter states (matching Dashboard pattern)
   const [selectedProduct, setSelectedProduct] = useState(
-    searchParams.get('productId') || 'Product - Partner Management Platform'
+    searchParams.get('product') || searchParams.get('productId') || 'Product - Partner Management Platform'
   );
   const [selectedSprint, setSelectedSprint] = useState(
-    searchParams.get('sprintId') || 'current'
+    searchParams.get('sprint') || searchParams.get('sprintId') || 'current'
   );
   
   // Sprint data for resolving sprint paths (matching Dashboard pattern)
@@ -82,13 +82,6 @@ const IndividualPerformance = () => {
     // Find sprint from API data
     const sprint = sprintData.find(s => s.id === sprintId);
     if (sprint?.path) {
-      // For DaaS, convert full path to simple format
-      if (selectedProduct === 'Product - Data as a Service' && sprint.path.includes('\\')) {
-        const pathParts = sprint.path.split('\\');
-        const iterationName = pathParts[pathParts.length - 1]; // Get last part
-        console.log(`📊 DaaS: Converting full path "${sprint.path}" → simple format "${iterationName}"`);
-        return iterationName;
-      }
       console.log(`📊 Resolved sprint ${sprintId} → ${sprint.path}`);
       return sprint.path;
     }
@@ -542,11 +535,19 @@ const IndividualPerformance = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Skip to main content link for accessibility */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded-md z-50"
+      >
+        Skip to main content
+      </a>
+
       {/* Enhanced Page Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-8">
+      <header className="bg-white border-b border-gray-200 px-6 py-5" role="banner">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div className="space-y-3">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="space-y-2">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -594,38 +595,96 @@ const IndividualPerformance = () => {
             )}
           </div>
         </div>
-      </div>
+      </header>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+      <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6" role="main">
 
         {/* Enhanced Filter Bar */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <section
+          className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+          role="region"
+          aria-labelledby="filter-heading"
+          aria-describedby="filter-description"
+        >
           <div className="border-b border-gray-100 px-6 py-4">
             <div className="flex items-center space-x-2">
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.414A1 1 0 013 6.707V4z" />
               </svg>
-              <h3 className="text-sm font-semibold text-gray-900">Filter Options</h3>
+              <h3 id="filter-heading" className="text-sm font-semibold text-gray-900">Filter Options</h3>
             </div>
+            <p id="filter-description" className="sr-only">
+              Use these filters to narrow down team members by project and sprint
+            </p>
           </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <ProductSelector 
-                  selectedProduct={selectedProduct}
-                  onProductChange={handleProductChange}
-                />
+          <div className="p-6" style={{ position: 'relative', isolation: 'isolate' }}>
+            {/* Filter Container with CSS Grid and Fixed Heights */}
+            <div
+              className="grid gap-6"
+              style={{
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gridTemplateRows: 'auto',
+                alignItems: 'start'
+              }}
+            >
+              {/* Project Filter */}
+              <div
+                className="space-y-2"
+                style={{
+                  position: 'relative',
+                  zIndex: 100,
+                  minHeight: '100px',
+                  isolation: 'isolate'
+                }}
+              >
+                                <label htmlFor="search" className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                  Product
+                </label>
+                <div style={{ position: 'relative', zIndex: 100 }}>
+                  <ProductSelector
+                    selectedProduct={selectedProduct}
+                    onProductChange={handleProductChange}
+                    className="w-full"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <SprintFilter 
-                  selectedSprint={selectedSprint}
-                  onSprintChange={handleSprintChange}
-                  selectedProject={selectedProduct}
-                />
+
+              {/* Sprint Filter */}
+              <div
+                className="space-y-2"
+                style={{
+                  position: 'relative',
+                  zIndex: 100,
+                  minHeight: '120px',
+                  isolation: 'isolate'
+                }}
+              >
+                                <label htmlFor="search" className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                  Sprint
+                </label>
+                <div style={{ position: 'relative', zIndex: 10000 }}>
+                  <SprintFilter
+                    selectedSprint={selectedSprint}
+                    onSprintChange={handleSprintChange}
+                    selectedProject={selectedProduct}
+                    sprints={sprintData}
+                    className="w-full"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <label htmlFor="search" className="block text-sm font-semibold text-gray-700">
+
+              {/* Search Field */}
+              <div
+                className="space-y-2"
+                style={{
+                  position: 'relative',
+                  zIndex: 80,
+                  minHeight: '100px',
+                  isolation: 'isolate'
+                }}
+              >
+                <label htmlFor="search" className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
                   Search Team Member
                 </label>
                 <div className="relative">
@@ -639,34 +698,52 @@ const IndividualPerformance = () => {
                     id="search"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="block w-full pl-10 pr-4 py-2.5 min-h-[44px] border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     placeholder="Search by name or email..."
+                    aria-label="Search team members"
+                    aria-describedby="search-help"
+                    style={{
+                      position: 'relative',
+                      zIndex: 1,
+                      backgroundColor: 'white'
+                    }}
                   />
                 </div>
                 {searchQuery && (
-                  <div className="text-xs text-gray-500 mt-1">
+                  <div id="search-help" className="text-xs text-gray-500 mt-1">
                     {filteredMembers.length} of {teamMembers.length} members match
                   </div>
                 )}
               </div>
             </div>
+
+            {/* Add extra spacing below filters to prevent overlap */}
+            <div style={{ height: '60px' }} />
           </div>
-        </div>
+        </section>
 
         {/* Enhanced Team Member Selection */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="border-b border-gray-100 px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-                </svg>
-                <h3 className="text-sm font-semibold text-gray-900">Select Team Member</h3>
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Select Team Member</h3>
+                  <p className="text-sm text-gray-600">Choose a team member to view their performance analytics</p>
+                </div>
               </div>
               {teamMembers.length > 0 && (
-                <span className="text-sm text-gray-500">
-                  {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''} available
-                </span>
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-gray-900">
+                    {filteredMembers.length} of {teamMembers.length}
+                  </div>
+                  <div className="text-xs text-gray-500">members available</div>
+                </div>
               )}
             </div>
           </div>
@@ -811,10 +888,96 @@ const IndividualPerformance = () => {
 
             {individualMetrics && (
               <>
-                {/* Enhanced User Info Header */}
-                <div className="bg-gradient-to-r from-white to-blue-50 rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="p-8">
+                {/* Performance Snapshot Hero Section */}
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl shadow-lg overflow-hidden mb-6">
+                  <div className="p-8 text-white">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                      <div className="flex items-center space-x-6">
+                        <div className="relative">
+                          <div className="w-24 h-24 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center text-white text-3xl font-bold shadow-lg border border-white/30">
+                            {individualMetrics.userInfo.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-green-400 rounded-full border-2 border-white flex items-center justify-center shadow-lg">
+                            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <h2 className="text-4xl font-bold text-white">{individualMetrics.userInfo.name}</h2>
+                          <p className="text-blue-100 text-lg">{individualMetrics.userInfo.email}</p>
+                          <div className="flex items-center space-x-3">
+                            <span className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-white/20 backdrop-blur-sm text-white border border-white/30">
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2z" />
+                              </svg>
+                              {individualMetrics.userInfo.role}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quick Performance Indicators */}
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                          <div className="text-3xl font-bold text-white">
+                            {(individualMetrics.performance.completionRate || 0).toFixed(1)}%
+                          </div>
+                          <div className="text-blue-100 text-sm font-medium">Completion Rate</div>
+                        </div>
+                        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                          <div className="text-3xl font-bold text-white">
+                            {individualMetrics.performance.completedStoryPoints || 0}
+                          </div>
+                          <div className="text-blue-100 text-sm font-medium">Story Points</div>
+                        </div>
+                        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20 col-span-2 lg:col-span-1">
+                          <div className="text-3xl font-bold text-white">
+                            {individualMetrics.performance.velocity || 0}
+                          </div>
+                          <div className="text-blue-100 text-sm font-medium">Velocity</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Context Information */}
+                    <div className="mt-6 pt-6 border-t border-white/20">
+                      <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center space-x-2 text-blue-100">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="font-medium">
+                            {selectedSprint === 'current' ? 'Current Sprint' :
+                             selectedSprint === 'all-sprints' ? 'All Sprints' :
+                             sprintData.find(s => s.id === selectedSprint)?.name || selectedSprint}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 text-blue-100">
+                          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                          <span className="text-sm">Live Data</span>
+                        </div>
+                        {selectedUser && (
+                          <div className="ml-auto">
+                            <ExportButtons
+                              exportType="individual"
+                              userId={selectedUser}
+                              period="sprint"
+                              sprintId={selectedSprint}
+                              className="bg-white/20 backdrop-blur-sm border-white/30 text-white hover:bg-white/30"
+                              size="small"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Enhanced User Info Header */}
+                <div className="bg-gradient-to-r from-white to-blue-50 rounded-xl shadow-sm border border-gray-200 overflow-hidden" style={{ display: 'none' }}>
+                  <div className="p-6">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       <div className="flex items-center space-x-6">
                         <div className="relative">
                           <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center text-white text-2xl font-bold shadow-lg">
@@ -954,8 +1117,8 @@ const IndividualPerformance = () => {
 
                 {/* Enhanced Charts Section */}
                 <div className="space-y-6">
-                  {/* Velocity Trend Analysis and Task Distribution - Same Row */}
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  {/* Mobile-First Chart Layout */}
+                  <div className="space-y-6">
                   {/* Individual Velocity Trend Chart */}
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="border-b border-gray-100 px-6 py-4">
@@ -1102,7 +1265,7 @@ const IndividualPerformance = () => {
                   })()}
                 </div>
 
-                  {/* Work Items Distribution Chart */}
+                {/* Work Items Distribution Chart */}
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="border-b border-gray-100 px-6 py-4">
                       <div className="flex items-center space-x-2">
@@ -1190,10 +1353,14 @@ const IndividualPerformance = () => {
                       })()}
                     </div>
                   </div>
+
+                {/* End Grid Container for Side-by-Side Charts */}
                 </div>
 
+                {/* End Charts Section */}
+                </div>
 
-                  {/* Recent Work Items - Full Width */}
+                {/* Recent Work Items - Full Width Section */}
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="border-b border-gray-100 px-6 py-4">
                       <div className="flex items-center justify-between">
@@ -1219,9 +1386,6 @@ const IndividualPerformance = () => {
                             <th className="text-left py-4 px-6 font-semibold text-gray-700 text-sm">Type</th>
                             <th className="text-left py-4 px-6 font-semibold text-gray-700 text-sm">State</th>
                             <th className="text-left py-4 px-6 font-semibold text-gray-700 text-sm">Points</th>
-                            <th className="text-left py-4 px-6 font-semibold text-gray-700 text-sm">Assigned To</th>
-                            <th className="text-left py-4 px-6 font-semibold text-gray-700 text-sm">Created</th>
-                            <th className="text-left py-4 px-6 font-semibold text-gray-700 text-sm">Updated</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-100">
@@ -1297,20 +1461,11 @@ const IndividualPerformance = () => {
                                   <span className="text-gray-400">-</span>
                                 )}
                               </td>
-                              <td className="py-4 px-6 text-sm text-gray-900">
-                                {item.assignedTo || selectedUser?.displayName || <span className="text-gray-400">-</span>}
-                              </td>
-                              <td className="py-4 px-6 text-sm text-gray-500">
-                                {item.createdDate ? new Date(item.createdDate).toLocaleDateString() : <span className="text-gray-400">-</span>}
-                              </td>
-                              <td className="py-4 px-6 text-sm text-gray-500">
-                                {item.lastUpdated ? new Date(item.lastUpdated).toLocaleDateString() : <span className="text-gray-400">-</span>}
-                              </td>
                             </tr>
                           ))}
                           {(!individualMetrics.workItems.recent || individualMetrics.workItems.recent.length === 0) && (
                             <tr>
-                              <td colSpan={8} className="text-center py-12">
+                              <td colSpan={5} className="text-center py-12">
                                 <div className="flex flex-col items-center space-y-3">
                                   <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
                                     <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1358,37 +1513,75 @@ const IndividualPerformance = () => {
                   </div>
                 </div>
               )}
-              </div>
             </>
           )}
         </>
       )}
 
       {!selectedUser && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
-            <div className="text-center max-w-md mx-auto">
-              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Select a Team Member</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Choose a team member from the selection above to view their detailed performance metrics, 
-                velocity trends, and work item analysis.
-              </p>
-              <div className="mt-6 flex justify-center">
-                <div className="flex items-center space-x-2 text-sm text-gray-500">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <section
+          className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl shadow-sm border border-blue-200 p-8 lg:p-12"
+          role="region"
+          aria-labelledby="empty-state-heading"
+          aria-describedby="empty-state-description"
+        >
+          <div className="text-center max-w-lg mx-auto">
+            <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-lg">
+              <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <h3 id="empty-state-heading" className="text-2xl font-bold text-gray-900 mb-4">
+              Ready to Analyze Performance
+            </h3>
+            <p id="empty-state-description" className="text-lg text-gray-700 leading-relaxed mb-6">
+              Choose a team member from the selection above to view their comprehensive performance analytics,
+              including velocity trends, task distribution, and detailed work item analysis.
+            </p>
+
+            {/* Feature Highlights */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
+              <div className="flex flex-col items-center p-4 bg-white/60 backdrop-blur-sm rounded-lg border border-blue-200/50">
+                <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center mb-3">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                   </svg>
-                  <span>Performance analytics ready</span>
                 </div>
+                <h4 className="font-semibold text-gray-900 mb-1">Velocity Trends</h4>
+                <p className="text-sm text-gray-600 text-center">Track performance over time</p>
+              </div>
+
+              <div className="flex flex-col items-center p-4 bg-white/60 backdrop-blur-sm rounded-lg border border-blue-200/50">
+                <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center mb-3">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2V7a2 2 0 012-2h2a2 2 0 002 2v2a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 00-2 2h-2a2 2 0 00-2 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+                <h4 className="font-semibold text-gray-900 mb-1">Task Distribution</h4>
+                <p className="text-sm text-gray-600 text-center">Analyze work item patterns</p>
+              </div>
+
+              <div className="flex flex-col items-center p-4 bg-white/60 backdrop-blur-sm rounded-lg border border-blue-200/50">
+                <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center mb-3">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h4 className="font-semibold text-gray-900 mb-1">Detailed Reports</h4>
+                <p className="text-sm text-gray-600 text-center">Export and share insights</p>
               </div>
             </div>
-        </div>
+
+            <div className="mt-8 flex justify-center">
+              <div className="flex items-center space-x-2 px-4 py-2 bg-blue-100 rounded-lg border border-blue-300">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-blue-800">Performance analytics ready</span>
+              </div>
+            </div>
+          </div>
+        </section>
       )}
-      </div>
+      </main>
     </div>
   );
 };

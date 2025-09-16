@@ -542,9 +542,9 @@ class MetricsCalculatorService {
    * @returns {Promise<object>} Individual metrics
    */
   async calculateIndividualMetrics(userId, options = {}) {
-    const { period = 'sprint', startDate, endDate, productId } = options;
-    const cacheKey = `individual_${userId}_${period}_${startDate}_${endDate}_${productId || 'all'}`;
-    
+    const { period = 'sprint', startDate, endDate, productId, sprintId, iterationPath } = options;
+    const cacheKey = `individual_${userId}_${period}_${startDate}_${endDate}_${productId || 'all'}_${sprintId || 'all'}_${iterationPath || 'none'}`;
+
     const cached = this.getFromCache(cacheKey);
     if (cached) {
       return cached;
@@ -555,7 +555,9 @@ class MetricsCalculatorService {
       const workItems = await this.azureService.getUserWorkItems(userId, {
         startDate,
         endDate,
-        productId
+        productId,
+        sprintId,
+        iterationPath
       });
       
       // Get user capacity data for current sprint (if available)
@@ -571,12 +573,27 @@ class MetricsCalculatorService {
         }
       }
       
-      // Get user performance history for trends
-      const performanceHistory = await this.azureService.getUserPerformanceHistory(userId, {
-        timeRange: '6months',
-        productId
-      });
-      
+      // Get user performance history for velocity trend analysis - always show latest 4 sprints
+      let performanceHistory = [];
+      try {
+        performanceHistory = await this.azureService.getUserPerformanceHistory(userId, {
+          timeRange: '4sprints', // Changed to show latest 4 sprints specifically
+          productId
+        });
+      } catch (error) {
+        console.warn('Could not fetch performance history for velocity trends:', error.message);
+        // Fallback: create single period data from current work items
+        const performance = this.calculateEnhancedUserPerformance(workItems, capacityData);
+        performanceHistory = [{
+          iterationPath: iterationPath || sprintId || 'Current Sprint',
+          completedStoryPoints: performance.completedStoryPoints || 0,
+          totalAssignedStoryPoints: performance.totalAssignedStoryPoints || 0,
+          completionRate: performance.completionRate || 0,
+          velocity: performance.velocity || 0,
+          period: 'Current Sprint'
+        }];
+      }
+
       // Calculate individual performance metrics with real data
       const performance = this.calculateEnhancedUserPerformance(workItems, capacityData);
       const quality = this.calculateEnhancedUserQuality(workItems);
@@ -609,16 +626,80 @@ class MetricsCalculatorService {
           averageTaskCompletionTime: performance.averageTaskCompletionTime || 0,
           capacityUtilization: performance.capacityUtilization || 0
         },
-        workItems: {
-          total: workItems.length,
-          completed: workItems.filter(wi => wi.state === 'Done' || wi.state === 'Closed').length,
-          inProgress: workItems.filter(wi => wi.state === 'Active' || wi.state === 'In Progress').length,
-          backlog: workItems.filter(wi => wi.state === 'New' || wi.state === 'Approved').length,
-          byType: this.categorizeWorkItemsByType(workItems),
-          recent: workItems
-            .sort((a, b) => new Date(b.changedDate) - new Date(a.changedDate))
-            .slice(0, 5)
-            .map(item => ({
+        workItems: (() => {
+          // Apply sprint filtering consistently for all work item counts
+          let filteredItems = workItems;
+
+          if (sprintId && sprintId !== 'all-sprints') {
+            let actualSprintId = sprintId;
+
+            // Handle 'current' sprint by finding the latest Delivery sprint
+            if (sprintId === 'current') {
+              // Find the highest numbered Delivery sprint from work items
+              const deliverySprintNumbers = workItems
+                .map(item => {
+                  if (!item.iterationPath) return null;
+                  const iterationName = item.iterationPath.split('\\').pop() || item.iterationPath;
+                  const match = iterationName.match(/^Delivery\s+(\d+)$/i);
+                  return match ? parseInt(match[1]) : null;
+                })
+                .filter(num => num !== null);
+
+              if (deliverySprintNumbers.length > 0) {
+                const currentSprintNumber = Math.max(...deliverySprintNumbers);
+                actualSprintId = `delivery-${currentSprintNumber}`;
+              } else {
+                // Fallback: if no Delivery sprints found, don't filter
+                actualSprintId = 'all-sprints';
+              }
+            }
+
+            // First, try to filter by specific sprint using iteration path
+            const sprintFilteredItems = workItems.filter(item => {
+              if (!item.iterationPath) return false;
+              const itemSprintName = item.iterationPath.split('\\').pop() || item.iterationPath;
+              return itemSprintName.includes(actualSprintId.replace('delivery-', 'Delivery '));
+            });
+
+            // If iteration path filtering worked, use those items
+            if (sprintFilteredItems.length > 0) {
+              filteredItems = sprintFilteredItems;
+            } else {
+              // If no iteration path data available, try alternate filtering approaches
+              // Look for work items that have the sprint ID in their title or description
+              const titleFilteredItems = workItems.filter(item => {
+                const searchText = ((item.title || '') + ' ' + (item.description || '')).toLowerCase();
+                const targetSprint = actualSprintId.replace('delivery-', '').replace('-', ' ');
+                return searchText.includes('delivery') && searchText.includes(targetSprint);
+              });
+
+              if (titleFilteredItems.length > 0) {
+                filteredItems = titleFilteredItems;
+              }
+              // If no alternate filtering works, keep all items (fallback behavior)
+            }
+          } else if (iterationPath) {
+            // Filter by iteration path
+            filteredItems = workItems.filter(item =>
+              item.iterationPath && item.iterationPath.includes(iterationPath)
+            );
+
+            // If no items match the iteration path filter, fall back to all items
+            if (filteredItems.length === 0) {
+              filteredItems = workItems;
+            }
+          }
+
+          return {
+            total: filteredItems.length,
+            completed: filteredItems.filter(wi => wi.state === 'Done' || wi.state === 'Closed').length,
+            inProgress: filteredItems.filter(wi => wi.state === 'Active' || wi.state === 'In Progress').length,
+            backlog: filteredItems.filter(wi => wi.state === 'New' || wi.state === 'Approved').length,
+            byType: this.categorizeWorkItemsByType(filteredItems),
+            recent: filteredItems
+              .sort((a, b) => new Date(b.changedDate) - new Date(a.changedDate))
+              // Show all filtered work items, not just recent 5
+              .map(item => ({
               id: item.id,
               title: item.title,
               type: item.type,
@@ -627,7 +708,8 @@ class MetricsCalculatorService {
               priority: item.priority,
               url: item.url
             }))
-        },
+          };
+        })(),
         quality: {
           bugsCreated: quality.bugsCreated || 0,
           bugsResolved: quality.bugsResolved || 0,
@@ -1568,25 +1650,48 @@ class MetricsCalculatorService {
     }
 
     try {
-      // 1) Get real iterations from Azure DevOps for the selected project
+      // 1) Get real iterations from Azure DevOps for the PMP Developer Team specifically
+      // This team has the Delivery sprints (2,3,4,5) that we need
       const iterations = await this.azureService.iterationResolver.getProjectIterations(
         productId || this.azureService.project,
-        null
+        "PMP Developer Team"  // Specify the team that has Delivery sprints
       );
 
-      // 2) Pick latest N iterations by start date, excluding future sprints
-      const now = new Date();
-      const sorted = (iterations || [])
+      console.log('🔍 [DEBUG] Raw iterations from Azure DevOps:', iterations?.map(i => ({
+        id: i.id,
+        name: i.name,
+        path: i.path
+      })));
+
+      // 2) Filter for Delivery sprints specifically (numbers 2, 3, 4, 5)
+      const deliveryIterations = (iterations || [])
+        .filter(iter => {
+          // Filter for iterations with "Delivery" in the path or name
+          const hasDeliveryPath = iter.path && iter.path.includes('Delivery');
+          const hasDeliveryName = iter.name && iter.name.toLowerCase().includes('delivery');
+          return hasDeliveryPath || hasDeliveryName;
+        })
         .filter(iter => iter.attributes?.startDate)
-        .filter(iter => new Date(iter.attributes.startDate) <= now) // Exclude future sprints
-        .sort((a, b) => new Date(b.attributes.startDate) - new Date(a.attributes.startDate))
-        .slice(0, parseInt(range, 10));
+        .filter(iter => new Date(iter.attributes.startDate) <= new Date()) // Exclude future sprints
+        .sort((a, b) => new Date(b.attributes.startDate) - new Date(a.attributes.startDate));
+
+      console.log('🔍 [DEBUG] Filtered Delivery iterations:', deliveryIterations?.map(i => ({
+        name: i.name,
+        path: i.path,
+        startDate: i.attributes?.startDate
+      })));
+
+      // 3) Take the last N Delivery sprints (dynamically, regardless of numbers)
+      const targetSprints = deliveryIterations
+        .slice(0, Math.min(range, deliveryIterations.length));
+
+      console.log(`🔍 [DEBUG] Target sprints (last ${range} delivery sprints):`, targetSprints?.map(i => i.name));
 
       const velocityTrend = [];
 
-      for (const iter of sorted) {
+      for (const iter of targetSprints) {
         const sprintName = iter.name;
-        // 3) Fetch work items for each sprint and compute real commitment/velocity
+        // 4) Fetch work items for each sprint and compute real commitment/velocity
         const workItems = await this.getWorkItemsForProduct(productId, { sprintId: sprintName });
 
         const commitmentStoryPoints = workItems.reduce((sum, wi) => sum + (wi.storyPoints || 0), 0);
@@ -1606,8 +1711,10 @@ class MetricsCalculatorService {
         });
       }
 
-      // 4) Return chronologically ascending by start date (or sprint number when available)
+      // 5) Return chronologically ascending by sprint number
       velocityTrend.sort((a, b) => a.sprintNumber - b.sprintNumber);
+
+      console.log('🔍 [DEBUG] Final velocity trend result:', velocityTrend);
 
       this.setCache(cacheKey, velocityTrend);
       return velocityTrend;

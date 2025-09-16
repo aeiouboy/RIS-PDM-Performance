@@ -1,7 +1,49 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
 
-const MobileNav = ({ isOpen, onClose }) => {
+// User Section Component
+const UserSection = memo(() => {
+  const { user } = useUser();
+
+  // Generate user initials
+  const userInitials = useMemo(() => {
+    if (!user?.name) return 'U';
+    return user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  }, [user?.name]);
+
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
+      <div className="flex items-center space-x-3">
+        <div className="h-10 w-10 bg-primary-500 rounded-full flex items-center justify-center">
+          {user.avatar ? (
+            <img
+              src={user.avatar}
+              alt={user.name}
+              className="h-10 w-10 rounded-full object-cover"
+            />
+          ) : (
+            <span className="text-white font-medium">{userInitials}</span>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+          <p className="text-xs text-gray-500 truncate">{user.email}</p>
+          <p className="text-xs text-gray-400">
+            {user.department} • {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+});
+UserSection.displayName = 'UserSection';
+
+const MobileNav = memo(({ isOpen, onClose }) => {
   const navItems = [
     {
       name: 'Dashboard',
@@ -108,20 +150,13 @@ const MobileNav = ({ isOpen, onClose }) => {
         </div>
 
         {/* User section */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
-          <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 bg-primary-500 rounded-full flex items-center justify-center">
-              <span className="text-white font-medium">U</span>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">User Name</p>
-              <p className="text-xs text-gray-500">user@company.com</p>
-            </div>
-          </div>
-        </div>
+        <UserSection />
       </div>
     </>
   );
-};
+});
+
+// Set display name for debugging (RIS PDM convention)
+MobileNav.displayName = 'MobileNav';
 
 export default MobileNav;

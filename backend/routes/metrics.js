@@ -367,13 +367,13 @@ router.get('/individual/:userId',
       }
 
       const { userId } = req.params;
-      const { period = 'sprint', startDate, endDate, productId } = req.query;
-      const cacheKey = `individual-${userId}-${period}-${startDate}-${endDate}-${productId || 'all'}`;
+      const { period = 'sprint', startDate, endDate, productId, sprintId, iterationPath } = req.query;
+      const cacheKey = `individual-${userId}-${period}-${startDate}-${endDate}-${productId || 'all'}-${sprintId || 'all'}-${iterationPath || 'none'}`;
 
       // Check cache first
       const cachedData = metricsCache.get(cacheKey);
       if (cachedData) {
-        logger.info(`Returning cached individual metrics for user ${userId}`, { productId });
+        logger.info(`Returning cached individual metrics for user ${userId}`, { productId, sprintId, iterationPath });
         return res.json(cachedData);
       }
 
@@ -383,6 +383,8 @@ router.get('/individual/:userId',
         startDate,
         endDate,
         productId,
+        sprintId,
+        iterationPath,
         requesterId: req.user?.id,
       });
 
@@ -393,7 +395,9 @@ router.get('/individual/:userId',
           period,
           startDate,
           endDate,
-          productId
+          productId,
+          sprintId,
+          iterationPath
         });
       } catch (azureError) {
         logger.error('Azure DevOps API error for individual metrics:', {
@@ -2100,121 +2104,6 @@ router.get('/sprints',
         if (mapped) project = mapped;
       }
 
-      // Generate project-specific mock sprint data function
-      const generateMockSprints = (projectId) => {
-        logger.info(`Generating sprints for project: ${projectId}`);
-        
-        if (projectId === 'Product - Data as a Service' || projectId === 'daas') {
-          return [
-            {
-              id: 'current',
-              name: 'Delivery 12',
-              description: 'Current Active Sprint (Aug 25 - Sep 5)',
-              status: 'active',
-              startDate: '2025-08-25',
-              endDate: '2025-09-05',
-              path: 'Product - Data as a Service\\Delivery 12'
-            },
-            {
-              id: 'delivery-11',
-              name: 'Delivery 11',
-              description: 'Previous Sprint (Aug 11-22)',
-              status: 'completed',
-              startDate: '2025-08-11', // ✅ FIXED: Real Azure DevOps date
-              endDate: '2025-08-22',   // ✅ FIXED: Real Azure DevOps date
-              path: 'Product - Data as a Service\\Delivery 11'
-            },
-            {
-              id: 'delivery-10',
-              name: 'Delivery 10',
-              description: 'Previous Sprint (Jul 28 - Aug 8)',
-              status: 'completed',
-              startDate: '2025-07-28', // ✅ FIXED: Real Azure DevOps date
-              endDate: '2025-08-08',   // ✅ FIXED: Real Azure DevOps date
-              path: 'Product - Data as a Service\\Delivery 10'
-            },
-            {
-              id: 'all-sprints',
-              name: 'All Sprints',
-              description: 'All time view',
-              status: 'all',
-              startDate: null,
-              endDate: null,
-              path: null
-            }
-          ];
-        } else if (projectId === 'Product - Partner Management Platform' || projectId === 'pmp') {
-          return [
-            {
-              id: 'current',
-              name: 'Delivery 5',
-              description: 'Current Active Sprint (Sep 9 - Sep 20)',
-              status: 'active',
-              startDate: '2025-09-09',
-              endDate: '2025-09-20',
-              path: 'Product\\Delivery 5'
-            },
-            {
-              id: 'delivery-4',
-              name: 'Delivery 4',
-              description: 'Previous Sprint (Aug 25 - Sep 5)',
-              status: 'completed',
-              startDate: '2025-08-25',
-              endDate: '2025-09-05',
-              path: 'Product\\Delivery 4'
-            },
-            {
-              id: 'delivery-3',
-              name: 'Delivery 3',
-              description: 'Previous Sprint (Aug 11 - Aug 22)', // ✅ Updated description
-              status: 'completed',
-              startDate: '2025-08-11', // ✅ Fixed - was dynamic, now matches PRD: Aug 11
-              endDate: '2025-08-22',   // ✅ Fixed - was dynamic, now matches PRD: Aug 22
-              path: 'Product\\Delivery 3'
-            },
-            {
-              id: 'delivery-2',
-              name: 'Delivery 2',
-              description: 'Previous Sprint (July 29 - Aug 8)', // ✅ Updated description
-              status: 'completed',
-              startDate: '2025-07-29', // ✅ Fixed - was dynamic, now matches PRD: July 29
-              endDate: '2025-08-08',   // ✅ Fixed - was dynamic, now matches PRD: Aug 8
-              path: 'Product\\Delivery 2'
-            },
-            {
-              id: 'all-sprints',
-              name: 'All Sprints',
-              description: 'All time view',
-              status: 'all',
-              startDate: null,
-              endDate: null,
-              path: null
-            }
-          ];
-        } else {
-          // Generic fallback for other projects
-          return [
-            {
-              id: 'current',
-              name: 'Current Sprint',
-              description: 'Current Active Sprint',
-              status: 'active',
-              startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              path: 'Current Sprint'
-            },
-            {
-              id: 'all-sprints',
-              name: 'All Sprints',
-              description: 'All time view',
-              status: 'all',
-              startDate: null,
-              endDate: null,
-              path: null
-            }
-          ];
-        }
-      };
 
       // Get iterations from Azure DevOps with timeout - try real API first, then fallback
       let iterations;

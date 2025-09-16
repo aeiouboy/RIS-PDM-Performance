@@ -10,12 +10,13 @@ export default defineConfig({
         target: 'http://localhost:3002',
         changeOrigin: true,
         secure: false,
-      },
-      '/socket.io': {
-        target: 'http://localhost:3002',
-        changeOrigin: true,
-        ws: true,
       }
+      // WebSocket proxy disabled to prevent connection floods
+      // '/socket.io': {
+      //   target: 'http://localhost:3002',
+      //   changeOrigin: true,
+      //   ws: true,
+      // }
     }
   }
 })

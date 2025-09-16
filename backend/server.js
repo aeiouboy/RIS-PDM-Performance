@@ -287,6 +287,48 @@ if (process.env.NODE_ENV !== 'production') {
   app.use('/api/iteration-test', iterationTestRoutes);
 }
 
+// Server-Sent Events endpoint for dashboard real-time updates
+app.get('/api/sse/dashboard', (req, res) => {
+  // Set SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
+  });
+
+  logger.info('🔗 SSE client connected to dashboard endpoint');
+
+  // Send initial connection confirmation
+  res.write(`data: ${JSON.stringify({
+    type: 'connection',
+    message: 'Connected to dashboard SSE',
+    timestamp: new Date().toISOString()
+  })}\n\n`);
+
+  // Send periodic heartbeat
+  const heartbeatInterval = setInterval(() => {
+    if (res.writable) {
+      res.write(`event: heartbeat\ndata: ${JSON.stringify({
+        timestamp: new Date().toISOString()
+      })}\n\n`);
+    }
+  }, 30000);
+
+  // Handle client disconnect
+  req.on('close', () => {
+    logger.info('🔗 SSE client disconnected from dashboard endpoint');
+    clearInterval(heartbeatInterval);
+  });
+
+  // Handle connection error
+  req.on('error', (error) => {
+    logger.error('🔗 SSE connection error:', error);
+    clearInterval(heartbeatInterval);
+  });
+});
+
 // Webhook Routes (no authentication required for Azure DevOps webhooks)
 app.use('/webhooks', webhookRoutes);
 

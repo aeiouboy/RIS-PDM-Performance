@@ -123,9 +123,6 @@ const DateRangePicker = ({ startDate, endDate, onDateRangeChange, className = ''
 
   return (
     <div className={`relative ${className}`} ref={dropdownRef}>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        Date Range
-      </label>
       
       <button
         type="button"

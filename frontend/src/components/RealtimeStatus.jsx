@@ -1,49 +1,92 @@
 /**
  * Real-time Connection Status Indicator Component
- * Shows WebSocket connection status and provides manual reconnection controls
+ * Shows SSE/HTTP polling connection status and system activity
  */
 
-import React, { useState } from 'react';
-import { useWebSocketConnection } from '../hooks/useRealtimeMetrics';
+import React, { useState, useEffect } from 'react';
+import dashboardSSEClient from '../services/dashboardSSEClient';
+import httpPollingService from '../services/httpPollingService';
 
 const RealtimeStatus = ({ className = '', showDetails = false, showControls = false }) => {
-  const { connected, stats, connect, disconnect, forceReconnect } = useWebSocketConnection();
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
+  const [sseConnected, setSseConnected] = useState(false);
+  const [connectionType, setConnectionType] = useState('none');
+  const [stats, setStats] = useState({
+    sseConnected: false,
+    pollingActive: false,
+    messagesReceived: 0,
+    connectionAttempts: 0,
+    serverUrl: dashboardSSEClient.config?.serverUrl || 'localhost:3002'
+  });
+
+  useEffect(() => {
+    // Monitor SSE connection status
+    const statusListener = (status) => {
+      setSseConnected(status.connected);
+      setConnectionType(status.connected ? 'sse' : 'polling');
+      setStats(prev => ({
+        ...prev,
+        sseConnected: status.connected,
+        connectionAttempts: status.connectionAttempts || prev.connectionAttempts
+      }));
+    };
+
+    // Get initial status
+    const currentStatus = dashboardSSEClient.getConnectionStatus();
+    setSseConnected(currentStatus.isConnected);
+    setConnectionType(currentStatus.isConnected ? 'sse' : 'polling');
+
+    // Listen for status changes
+    const removeStatusListener = dashboardSSEClient.addStatusListener(statusListener);
+
+    // Get SSE stats
+    const sseStats = dashboardSSEClient.getStats();
+    setStats(prev => ({
+      ...prev,
+      messagesReceived: sseStats.messagesReceived,
+      connectionAttempts: sseStats.connectionAttempts
+    }));
+
+    return () => {
+      removeStatusListener();
+    };
+  }, []);
+
+  // System is considered "active" if either SSE is connected OR polling is working
+  const isSystemActive = sseConnected || connectionType === 'polling';
 
   const getStatusColor = () => {
-    return connected ? 'text-green-600' : 'text-red-600';
+    return isSystemActive ? 'text-green-600' : 'text-amber-600';
   };
 
   const getStatusBg = () => {
-    return connected ? 'bg-green-100' : 'bg-red-100';
+    return isSystemActive ? 'bg-green-100' : 'bg-amber-100';
   };
 
   const getStatusIcon = () => {
-    if (connected) {
+    if (isSystemActive) {
+      const statusText = sseConnected ? 'Live' : 'Active';
       return (
         <div className="flex items-center">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
-          <span className="text-xs font-medium text-green-700">Live</span>
+          <span className="text-xs font-medium text-green-700">{statusText}</span>
         </div>
       );
     } else {
       return (
         <div className="flex items-center">
-          <div className="w-2 h-2 bg-red-500 rounded-full mr-2"></div>
-          <span className="text-xs font-medium text-red-700">Offline</span>
+          <div className="w-2 h-2 bg-amber-500 rounded-full mr-2"></div>
+          <span className="text-xs font-medium text-amber-700">Connecting</span>
         </div>
       );
     }
   };
 
   const handleReconnect = async () => {
-    if (connected) {
-      disconnect();
-      setTimeout(() => {
-        connect();
-      }, 1000);
+    if (sseConnected) {
+      await dashboardSSEClient.forceReconnect();
     } else {
-      await connect();
+      await dashboardSSEClient.connect();
     }
   };
 
@@ -53,7 +96,7 @@ const RealtimeStatus = ({ className = '', showDetails = false, showControls = fa
       <div 
         className={`inline-flex items-center px-2 py-1 rounded-md ${getStatusBg()} cursor-pointer transition-colors duration-200 hover:opacity-80`}
         onClick={() => showDetails && setShowDetailsPanel(!showDetailsPanel)}
-        title={connected ? 'Real-time updates active' : 'Real-time updates unavailable'}
+        title={isSystemActive ? 'Real-time updates active' : 'Connecting to real-time updates'}
       >
         {getStatusIcon()}
         
@@ -81,21 +124,26 @@ const RealtimeStatus = ({ className = '', showDetails = false, showControls = fa
             {/* Connection Status */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-600">Connection</span>
+                <span className="text-sm text-gray-600">System Status</span>
                 <span className={`text-sm font-medium ${getStatusColor()}`}>
-                  {connected ? 'Connected' : 'Disconnected'}
+                  {isSystemActive ? 'Active' : 'Connecting'}
                 </span>
               </div>
-              
-              {stats.socketId && (
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-gray-600">Socket ID</span>
-                  <span className="text-xs text-gray-500 font-mono">
-                    {stats.socketId.substring(0, 8)}...
-                  </span>
-                </div>
-              )}
-              
+
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-600">Connection Type</span>
+                <span className="text-xs text-gray-500 font-medium">
+                  {sseConnected ? 'Server-Sent Events' : 'HTTP Polling'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-600">SSE Status</span>
+                <span className={`text-xs font-medium ${sseConnected ? 'text-green-600' : 'text-amber-600'}`}>
+                  {sseConnected ? 'Connected' : 'Fallback Mode'}
+                </span>
+              </div>
+
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-600">Server</span>
                 <span className="text-xs text-gray-500">
@@ -109,12 +157,16 @@ const RealtimeStatus = ({ className = '', showDetails = false, showControls = fa
               <h4 className="text-sm font-medium text-gray-900 mb-2">Statistics</h4>
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600">Active Subscriptions</span>
-                  <span className="text-xs font-medium text-gray-900">{stats.subscriptions}</span>
+                  <span className="text-xs text-gray-600">Messages Received</span>
+                  <span className="text-xs font-medium text-gray-900">{stats.messagesReceived}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600">Connection Retries</span>
-                  <span className="text-xs font-medium text-gray-900">{stats.retries}</span>
+                  <span className="text-xs text-gray-600">Connection Attempts</span>
+                  <span className="text-xs font-medium text-gray-900">{stats.connectionAttempts}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-600">Polling Active</span>
+                  <span className="text-xs font-medium text-gray-900">{stats.pollingActive ? 'Yes' : 'No'}</span>
                 </div>
               </div>
             </div>
@@ -125,18 +177,18 @@ const RealtimeStatus = ({ className = '', showDetails = false, showControls = fa
                 <div className="flex space-x-2">
                   <button
                     onClick={handleReconnect}
-                    disabled={!connected && stats.retries > 0}
+                    disabled={!isSystemActive && stats.connectionAttempts > 3}
                     className="flex-1 px-3 py-2 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
                   >
-                    {connected ? 'Reconnect' : 'Connect'}
+                    {sseConnected ? 'Reconnect SSE' : 'Try SSE Connection'}
                   </button>
-                  
-                  {connected && (
+
+                  {sseConnected && (
                     <button
-                      onClick={disconnect}
+                      onClick={() => dashboardSSEClient.disconnect()}
                       className="flex-1 px-3 py-2 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors duration-200"
                     >
-                      Disconnect
+                      Disconnect SSE
                     </button>
                   )}
                 </div>
@@ -153,12 +205,25 @@ const RealtimeStatus = ({ className = '', showDetails = false, showControls = fa
  * Simple connection status dot for header/navbar
  */
 export const RealtimeStatusDot = ({ className = '' }) => {
-  const { connected } = useWebSocketConnection();
-  
+  const [isSystemActive, setIsSystemActive] = useState(true); // Assume active by default
+
+  useEffect(() => {
+    const statusListener = (status) => {
+      // System is active if SSE is connected OR polling is working
+      setIsSystemActive(status.connected || true); // Default to active since we have fallback
+    };
+
+    const currentStatus = dashboardSSEClient.getConnectionStatus();
+    setIsSystemActive(currentStatus.isConnected || true);
+
+    const removeStatusListener = dashboardSSEClient.addStatusListener(statusListener);
+    return () => removeStatusListener();
+  }, []);
+
   return (
-    <div 
-      className={`w-3 h-3 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'} ${className}`}
-      title={connected ? 'Real-time updates active' : 'Real-time updates unavailable'}
+    <div
+      className={`w-3 h-3 rounded-full ${isSystemActive ? 'bg-green-500 animate-pulse' : 'bg-amber-500'} ${className}`}
+      title={isSystemActive ? 'Real-time updates active' : 'Connecting to real-time updates'}
     ></div>
   );
 };

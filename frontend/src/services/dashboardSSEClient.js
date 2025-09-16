@@ -28,7 +28,7 @@ class DashboardSSEClient {
 
     // Configuration - following websocketService.js pattern
     this.config = {
-      // Use current origin for API calls, SSE endpoint will be /api/sse/dashboard
+      // Use Vite proxy for API calls - /api routes are proxied to backend
       serverUrl: (typeof window !== 'undefined' && window.location?.origin) || 'http://localhost:5173',
       endpoint: '/api/sse/dashboard',
       autoConnect: true,

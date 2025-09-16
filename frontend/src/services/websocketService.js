@@ -9,6 +9,8 @@ class WebSocketService {
   constructor() {
     this.socket = null;
     this.isConnected = false;
+    this.isConnecting = false; // Prevent multiple connection attempts
+    this.connectionPromise = null; // Store active connection promise
     this.connectionRetries = 0;
     this.maxRetries = 5;
     this.retryDelay = 1000; // Start with 1 second
@@ -16,7 +18,7 @@ class WebSocketService {
     this.subscriptions = new Map(); // trackingId -> callback
     this.connectionListeners = new Set();
     this.statusListeners = new Set();
-    
+
     // Configuration
     this.config = {
       // Use current origin for Vite dev server, which proxies /socket.io to backend (3002)
@@ -29,6 +31,12 @@ class WebSocketService {
       forceNew: false,
       path: '/socket.io'
     };
+
+    // Singleton pattern to prevent multiple instances
+    if (WebSocketService.instance) {
+      return WebSocketService.instance;
+    }
+    WebSocketService.instance = this;
   }
 
   /**
@@ -36,22 +44,57 @@ class WebSocketService {
    * @returns {Promise<boolean>} Connection success status
    */
   async connect() {
+    console.log('🔍 WebSocket connect() called - current state:', {
+      isConnected: this.isConnected,
+      isConnecting: this.isConnecting,
+      hasPromise: !!this.connectionPromise,
+      socketConnected: this.socket?.connected
+    });
+
+    // Return existing connection promise if already connecting
+    if (this.connectionPromise) {
+      console.log('🔌 Reusing existing connection attempt');
+      return this.connectionPromise;
+    }
+
+    // Return true if already connected
     if (this.isConnected && this.socket?.connected) {
       console.log('🔌 Already connected to WebSocket server');
-      return true;
+      return Promise.resolve(true);
     }
+
+    // Create new connection promise
+    this.connectionPromise = this._performConnection();
+
+    try {
+      const result = await this.connectionPromise;
+      console.log('🔌 Connection attempt finished with result:', result);
+      return result;
+    } finally {
+      // Clear the promise when done (success or failure)
+      this.connectionPromise = null;
+    }
+  }
+
+  async _performConnection() {
+    this.isConnecting = true;
 
     try {
       console.log('🔌 Connecting to WebSocket server at', this.config.serverUrl);
-      
-      // Create socket connection
+
+      // Clean up existing connection if any
+      if (this.socket) {
+        this.socket.removeAllListeners();
+        this.socket.disconnect();
+        this.socket = null;
+      }
+
+      // Create socket connection with disabled auto-reconnection to prevent loops
       this.socket = io(this.config.serverUrl, {
         transports: ['websocket', 'polling'],
-        reconnection: this.config.reconnection,
-        reconnectionDelay: this.config.reconnectionDelay,
-        reconnectionDelayMax: this.config.reconnectionDelayMax,
+        reconnection: false, // Disable automatic reconnection to handle manually
         timeout: this.config.timeout,
-        forceNew: this.config.forceNew,
+        forceNew: true, // Force new connection each time
         path: this.config.path
       });
 
@@ -62,16 +105,19 @@ class WebSocketService {
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           console.error('🔌 Connection timeout');
+          this.isConnecting = false;
           reject(new Error('Connection timeout'));
         }, this.config.timeout);
 
         this.socket.on('connect', () => {
           clearTimeout(timeout);
+          this.isConnecting = false;
           resolve(true);
         });
 
         this.socket.on('connect_error', (error) => {
           clearTimeout(timeout);
+          this.isConnecting = false;
           console.error('🔌 Connection failed:', error);
           reject(error);
         });
@@ -80,6 +126,7 @@ class WebSocketService {
     } catch (error) {
       console.error('🔌 Failed to create WebSocket connection:', error);
       this.isConnected = false;
+      this.isConnecting = false;
       return false;
     }
   }
@@ -173,13 +220,19 @@ class WebSocketService {
       return;
     }
 
+    // Don't schedule if already connecting
+    if (this.connectionPromise) {
+      console.log('🔌 Connection attempt already in progress, skipping scheduled reconnection');
+      return;
+    }
+
     this.connectionRetries++;
     const delay = Math.min(this.retryDelay * Math.pow(2, this.connectionRetries - 1), this.maxRetryDelay);
-    
+
     console.log(`🔌 Scheduling reconnection attempt ${this.connectionRetries}/${this.maxRetries} in ${delay}ms`);
-    
+
     setTimeout(() => {
-      if (!this.isConnected && this.socket) {
+      if (!this.isConnected && !this.connectionPromise) {
         console.log('🔌 Attempting to reconnect...');
         this.connect();
       }
@@ -427,11 +480,14 @@ class WebSocketService {
   disconnect() {
     if (this.socket) {
       console.log('🔌 Disconnecting from WebSocket server');
+      this.socket.removeAllListeners();
       this.socket.disconnect();
       this.socket = null;
     }
-    
+
     this.isConnected = false;
+    this.isConnecting = false;
+    this.connectionPromise = null; // Clear any pending connection promise
     this.subscriptions.clear();
     this.notifyConnectionListeners(false);
   }

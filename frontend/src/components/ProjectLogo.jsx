@@ -1,11 +1,11 @@
 import React from 'react';
 import { brandingConfig } from '../config/branding';
 
-const ProjectLogo = ({ 
-  size = 'md', 
-  showText = true, 
+const ProjectLogo = ({
+  size = 'md',
+  showText = true,
   className = '',
-  variant = 'default' 
+  variant = 'default'
 }) => {
   const sizeClasses = {
     sm: 'h-8 w-8',
@@ -33,9 +33,9 @@ const ProjectLogo = ({
       {/* Project Name */}
       {showText && (
         <div className="ml-3">
-          <h1 className={`${textSizeClasses[size]} font-bold text-gray-900 leading-tight`}>
+          <div className={`${textSizeClasses[size]} font-bold text-gray-900 leading-tight`}>
             {variant === 'full' ? brandingConfig.project.fullName : brandingConfig.project.name}
-          </h1>
+          </div>
           {variant === 'full' && (
             <p className="text-sm text-gray-600">
               {brandingConfig.project.description}
