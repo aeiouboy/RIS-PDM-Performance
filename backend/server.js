@@ -409,16 +409,17 @@ process.on('SIGINT', gracefulShutdown);
 
 // WebSocket connection handling is managed by RealtimeService
 
-// Start server
-server.listen(PORT, async () => {
-  logger.info(`🚀 RIS Performance Dashboard API server running on port ${PORT}`);
+// Start server - bind to 0.0.0.0 for Railway compatibility
+const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
+server.listen(PORT, HOST, async () => {
+  logger.info(`🚀 RIS Performance Dashboard API server running on ${HOST}:${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`🔗 Health check: http://localhost:${PORT}/health`);
+  logger.info(`🔗 Health check: http://${HOST}:${PORT}/health`);
   logger.info(`⚡ WebSocket server initialized`);
-  
+
   // Initialize performance services after server start
   await initializeServices();
-  
+
   // Initialize enhanced security middleware
   await initializeSecurityMiddleware();
 });
