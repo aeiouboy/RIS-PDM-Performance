@@ -132,3 +132,6 @@ Railway automatically captures all console logs from the application. Logs are s
 Your application is fully configured for Railway deployment. The main requirement is setting up your Azure DevOps credentials in the Railway environment variables.
 
 Once the environment variables are configured, your dashboard will be live and fully functional!
+
+---
+*Last updated: 2025-09-16 - Environment variables configured*
