@@ -18,8 +18,8 @@ const msalConfig = {
  */
 const authMiddleware = async (req, res, next) => {
   try {
-    // Skip authentication in development mode if specified
-    if (process.env.NODE_ENV === 'development' && process.env.SKIP_AUTH === 'true') {
+    // Skip authentication if specified (development or temporary production bypass)
+    if (process.env.SKIP_AUTH === 'true') {
       req.user = {
         id: 'dev-user',
         email: 'dev@example.com',
