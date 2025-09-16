@@ -28,28 +28,38 @@ class RedisConfig {
   }
 
   /**
-   * Initialize Redis connection
+   * Initialize Redis connection with Railway-friendly fallback
    */
   async connect() {
     try {
-      const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-      
+      // Check if Redis should be disabled (Railway deployment)
+      if (process.env.DISABLE_REDIS === 'true' || !process.env.REDIS_URL) {
+        logger.info('🚫 Redis disabled or not configured, using memory cache only');
+        return null;
+      }
+
+      const redisUrl = process.env.REDIS_URL;
+
       this.client = createClient({
         url: redisUrl,
         socket: {
-          connectTimeout: 10000,
+          connectTimeout: 5000,  // Shorter timeout for Railway
           lazyConnect: true,
           reconnectDelay: this.retryDelay
         },
         retryDelayOnFailover: 100,
         enableAutoPipelining: true,
-        maxRetriesPerRequest: 3
+        maxRetriesPerRequest: 2  // Fewer retries for faster failover
       });
 
-      // Error handling
+      // Enhanced error handling for Railway
       this.client.on('error', (err) => {
-        logger.error('Redis Client Error:', err);
+        logger.warn('Redis Client Error (non-fatal):', {
+          message: err.message,
+          code: err.code
+        });
         this.isConnected = false;
+        // Don't throw - let application continue with memory cache
       });
 
       this.client.on('connect', () => {
@@ -67,25 +77,29 @@ class RedisConfig {
         this.isConnected = false;
       });
 
-      await this.client.connect();
-      
+      // Connect with timeout
+      const connectPromise = this.client.connect();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Redis connection timeout')), 5000);
+      });
+
+      await Promise.race([connectPromise, timeoutPromise]);
+
       // Test connection
       await this.client.ping();
       logger.info('✅ Redis connection established successfully');
-      
+
       return this.client;
     } catch (error) {
-      logger.error('Failed to connect to Redis:', error);
+      logger.warn('Redis unavailable, continuing with memory cache:', {
+        message: error.message,
+        code: error.code
+      });
       this.isConnected = false;
-      
-      if (this.retryAttempts < this.maxRetryAttempts) {
-        this.retryAttempts++;
-        logger.info(`Retrying Redis connection in ${this.retryDelay}ms (attempt ${this.retryAttempts}/${this.maxRetryAttempts})`);
-        setTimeout(() => this.connect(), this.retryDelay);
-      } else {
-        logger.error('Max Redis connection retries exceeded. Running without Redis cache.');
-      }
-      
+      this.client = null;
+
+      // Don't retry in production environments like Railway
+      // This prevents endless retry loops that can crash the app
       return null;
     }
   }

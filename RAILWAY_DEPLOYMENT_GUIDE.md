@@ -19,6 +19,7 @@ PORT=3002
 AZURE_DEVOPS_ORG=your-organization-name
 AZURE_DEVOPS_PROJECT=your-project-name
 AZURE_DEVOPS_PAT=your-personal-access-token
+DISABLE_REDIS=true
 ```
 
 ### 3. Optional Performance Settings
