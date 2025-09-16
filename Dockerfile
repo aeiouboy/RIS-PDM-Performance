@@ -41,6 +41,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/backend ./backend
 COPY --from=builder --chown=nextjs:nodejs /app/frontend/dist ./frontend/dist
 COPY --from=deps --chown=nextjs:nodejs /app/backend/node_modules ./backend/node_modules
 
+# Create logs directory with proper permissions (optional, logger will fall back to console)
+RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
+
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3002
