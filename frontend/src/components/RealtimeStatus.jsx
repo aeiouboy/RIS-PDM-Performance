@@ -16,7 +16,7 @@ const RealtimeStatus = ({ className = '', showDetails = false, showControls = fa
     pollingActive: false,
     messagesReceived: 0,
     connectionAttempts: 0,
-    serverUrl: dashboardSSEClient.config?.serverUrl || 'localhost:3002'
+    serverUrl: dashboardSSEClient.config?.serverUrl || (import.meta.env.PROD ? window.location.host : 'localhost:3002')
   });
 
   useEffect(() => {

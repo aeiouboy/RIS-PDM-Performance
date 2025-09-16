@@ -332,16 +332,42 @@ app.get('/api/sse/dashboard', (req, res) => {
 // Webhook Routes (no authentication required for Azure DevOps webhooks)
 app.use('/webhooks', webhookRoutes);
 
-// 404 handler for unmatched routes
-app.use('*', (req, res) => {
-  res.status(404).json({
-    error: 'Resource not found',
-    code: 'NOT_FOUND',
-    path: req.originalUrl,
-    method: req.method,
-    timestamp: new Date().toISOString()
+// Serve static files from frontend build in production
+if (process.env.NODE_ENV === 'production') {
+  const path = require('path');
+  const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'dist');
+
+  // Serve static assets
+  app.use(express.static(frontendBuildPath));
+
+  // Handle React Router - send all non-API requests to index.html
+  app.get('*', (req, res) => {
+    // Skip API routes
+    if (req.path.startsWith('/api/') || req.path.startsWith('/webhooks/') || req.path.startsWith('/auth/')) {
+      return res.status(404).json({
+        error: 'API endpoint not found',
+        code: 'NOT_FOUND',
+        path: req.originalUrl,
+        method: req.method,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Serve React app for all other routes
+    res.sendFile(path.join(frontendBuildPath, 'index.html'));
   });
-});
+} else {
+  // Development 404 handler for unmatched routes
+  app.use('*', (req, res) => {
+    res.status(404).json({
+      error: 'Resource not found',
+      code: 'NOT_FOUND',
+      path: req.originalUrl,
+      method: req.method,
+      timestamp: new Date().toISOString()
+    });
+  });
+}
 
 // Azure DevOps specific error handler (before global error handler)
 app.use(azureDevOpsErrorLogger);
