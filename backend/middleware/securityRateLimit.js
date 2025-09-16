@@ -11,37 +11,44 @@ const logger = require('../utils/logger');
 let redisClient = null;
 
 /**
- * Initialize Redis client for rate limiting
+ * Initialize Redis client for rate limiting with Railway-friendly fallback
  */
 const initializeRedisClient = async () => {
   if (redisClient) {
     return redisClient;
   }
 
-  // Skip Redis in test environment to avoid connection issues
-  if (process.env.NODE_ENV === 'test') {
-    logger.info('⏭️ Skipping Redis connection in test environment');
+  // Skip Redis in test environment or when disabled
+  if (process.env.NODE_ENV === 'test' || process.env.DISABLE_REDIS === 'true' || !process.env.REDIS_URL) {
+    logger.info('⏭️ Skipping Redis connection for rate limiting (using memory store)');
     return null;
   }
 
   try {
     redisClient = createClient({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: process.env.REDIS_PORT || 6379,
-      password: process.env.REDIS_PASSWORD || undefined,
-      db: process.env.REDIS_RATE_LIMIT_DB || 1, // Separate DB for rate limiting
+      url: process.env.REDIS_URL,
+      socket: {
+        connectTimeout: 5000,
+        lazyConnect: true
+      }
     });
 
     await redisClient.connect();
-    
+
     redisClient.on('error', (err) => {
-      logger.error('Redis rate limiting client error:', err);
+      logger.warn('Redis rate limiting client error (non-fatal):', {
+        message: err.message,
+        code: err.code
+      });
     });
 
     logger.info('✅ Redis rate limiting client connected');
     return redisClient;
   } catch (error) {
-    logger.error('❌ Failed to connect Redis rate limiting client:', error);
+    logger.warn('Redis unavailable for rate limiting, using memory store:', {
+      message: error.message,
+      code: error.code
+    });
     return null;
   }
 };
