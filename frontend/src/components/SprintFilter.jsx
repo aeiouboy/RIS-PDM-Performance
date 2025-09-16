@@ -112,7 +112,14 @@ const SprintFilter = ({ selectedSprint, onSprintChange, selectedProject, sprints
 
   // Use API sprints if available, otherwise use provided sprints or fallback
   const sprintList = apiSprints.length > 0 ? apiSprints : (sprints.length > 0 ? sprints : fallbackSprints);
-  const currentSprint = sprintList.find(s => s.id === selectedSprint) || sprintList[0];
+
+  // Find the current sprint - if selectedSprint is 'current', find the active sprint
+  let currentSprint;
+  if (selectedSprint === 'current') {
+    currentSprint = sprintList.find(s => s.status === 'active') || sprintList[0];
+  } else {
+    currentSprint = sprintList.find(s => s.id === selectedSprint) || sprintList[0];
+  }
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -166,11 +173,6 @@ const SprintFilter = ({ selectedSprint, onSprintChange, selectedProject, sprints
 
   return (
     <div className={`relative ${className}`} ref={dropdownRef}>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        Sprint {loading && <span className="text-xs text-gray-500">(Loading...)</span>}
-        {error && <span className="text-xs text-red-500">(Using fallback data)</span>}
-      </label>
-      
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -193,11 +195,13 @@ const SprintFilter = ({ selectedSprint, onSprintChange, selectedProject, sprints
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium text-gray-900 truncate">
                 {loading ? 'Loading sprints...' : currentSprint.name}
+                {loading && <span className="text-xs text-gray-500 ml-2">(Loading...)</span>}
+                {error && <span className="text-xs text-red-500 ml-2">(Using fallback data)</span>}
               </div>
               <div className="text-xs text-gray-500 truncate">
                 {loading ? 'Fetching from Azure DevOps' :
-                 (currentSprint.startDate && currentSprint.endDate ? 
-                  formatDateRange(currentSprint.startDate, currentSprint.endDate) : 
+                 (currentSprint.startDate && currentSprint.endDate ?
+                  formatDateRange(currentSprint.startDate, currentSprint.endDate) :
                   currentSprint.description)
                 }
               </div>
@@ -215,9 +219,9 @@ const SprintFilter = ({ selectedSprint, onSprintChange, selectedProject, sprints
       </button>
 
       {isOpen && (
-        <div className="absolute z-[9999] mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-96 overflow-y-auto">
-          <ul className="max-h-60 overflow-auto py-1" role="listbox">
-            {sprintList.map((sprint) => (
+        <div className="absolute mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-80 overflow-y-auto" style={{ zIndex: 10001, top: '100%', left: 0, right: 0 }}>
+          <ul className="max-h-72 overflow-auto py-1" role="listbox">
+            {sprintList.filter(sprint => sprint.id !== currentSprint.id).map((sprint) => (
               <li
                 key={sprint.id}
                 onClick={() => handleSprintSelect(sprint)}

@@ -1,8 +1,372 @@
 @import "tailwindcss";
 
-/* Custom base styles */
+/* Simple, clean design system styles */
+:root {
+  --focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.5);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+  color: #0f172a;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background-attachment: fixed;
+  font-weight: 400;
+}
+
+/* Enhanced text contrast for WCAG AA compliance */
+.text-gray-500 {
+  color: #64748b !important; /* Darker gray for better contrast */
+}
+
+.text-gray-600 {
+  color: #475569 !important; /* Darker gray for better contrast */
+}
+
+.text-gray-700 {
+  color: #334155 !important; /* Darker gray for better contrast */
+}
+
+.text-gray-800 {
+  color: #1e293b !important; /* Darker gray for better contrast */
+}
+
+/* Ensure all labels have proper contrast */
+label {
+  color: #334155 !important;
+  font-weight: 600;
+}
+
+/* Consistent hover states across all interactive elements */
+.hover-lift {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.2);
+}
+
+/* Button hover states */
+button {
+  transition: all 0.2s ease-in-out;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Card hover enhancement */
+.card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover:hover {
+  transform: scale(1.02);
+  box-shadow: 0 20px 50px 0 rgba(31, 38, 135, 0.25);
+}
+
+/* Interactive element focus states */
+.interactive-element {
+  transition: all 0.2s ease-in-out;
+  position: relative;
+}
+
+.interactive-element::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, #0ea5e9, #0284c7);
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  z-index: -1;
+}
+
+.interactive-element:hover::before {
+  opacity: 0.1;
+}
+
+.interactive-element:focus-visible::before {
+  opacity: 0.2;
+}
+
+/* Main content background */
+#root {
+  background: transparent;
+  min-height: 100vh;
+}
+
+/* Enhanced focus styles for accessibility */
+*:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+*:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Accessibility utilities */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 6px;
+  background: #000;
+  color: #fff;
+  padding: 8px;
+  text-decoration: none;
+  border-radius: 4px;
+  z-index: 1000;
+}
+
+.skip-link:focus {
+  top: 6px;
+}
+
+/* Focus visible improvements */
+.focus-visible:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Performance optimizations */
+.will-change-transform {
+  will-change: transform;
+}
+
+.will-change-auto {
+  will-change: auto;
+}
+
+/* Content visibility for large datasets */
+.content-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 500px;
+}
+
+/* Individual Performance Page Enhancements */
+.performance-snapshot-hero {
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%);
+}
+
+/* Mobile-first chart containers */
+@media (max-width: 768px) {
+  .chart-container {
+    height: 250px !important;
+    min-height: 250px;
+  }
+
+  .chart-responsive {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  /* Optimize touch targets for mobile */
+  .team-member-card {
+    min-height: 80px;
+    padding: 1.25rem !important;
+  }
+
+  /* Stack performance indicators vertically on mobile */
+  .performance-indicators {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+}
+
+/* Enhanced focus states for accessibility */
+.focus-ring:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+/* Team member selection improvements */
+.team-member-card {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center;
+}
+
+.team-member-card:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.team-member-card:active {
+  transform: translateY(0) scale(1);
+}
+
+/* Performance metrics card animations */
+.performance-metric {
+  transition: all 0.3s ease-in-out;
+}
+
+.performance-metric:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Chart responsiveness improvements */
+.chart-tooltip {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Loading state improvements */
+.skeleton-loader {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Enhanced spacing for better readability */
+.content-spacing > * + * {
+  margin-top: 1.5rem;
+}
+
+/* Improved button hover states */
+.btn-enhanced {
+  transition: all 0.2s ease-in-out;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-enhanced::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.3s, height 0.3s;
+}
+
+.btn-enhanced:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+/* Dark mode preparation */
+@media (prefers-color-scheme: dark) {
+  .dark-mode-ready {
+    --bg-primary: #1f2937;
+    --text-primary: #f9fafb;
+    --border-primary: #374151;
+  }
+}
+
+/* Print styles */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --focus-ring: 0 0 0 3px rgba(0, 0, 0, 0.8);
+  }
+}
+
+/* Custom Loading Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.8s ease-out forwards;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
