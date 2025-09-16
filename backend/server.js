@@ -234,6 +234,17 @@ app.use('/api/', systemResourceMonitor);
 app.use('/api/', azureDevOpsHealthMonitor);
 app.use('/api/metrics', azureDevOpsLogger);
 
+// Simple diagnostic endpoint (bypasses all middleware)
+app.get('/ping', (req, res) => {
+  logger.info('🔍 Ping endpoint hit - Railway connectivity test');
+  res.status(200).json({
+    status: 'pong',
+    timestamp: new Date().toISOString(),
+    host: req.headers.host,
+    userAgent: req.headers['user-agent']
+  });
+});
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
   const healthData = {
