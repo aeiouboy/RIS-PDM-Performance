@@ -1614,7 +1614,23 @@ class MetricsCalculatorService {
       if (!workItems || workItems.length === 0) {
         console.info(`No work items found for ${productId}, trying real API service`);
         try {
-          workItems = await this.realApiService.getRealWorkItems(productId, sprintId);
+          // Resolve iteration path the same way as getWorkItemsForProduct
+          let resolvedIterationPath = null;
+          if (sprintId) {
+            try {
+              resolvedIterationPath = await this.azureService.iterationResolver.resolveIteration(
+                productId,
+                sprintId,
+                null // teamName - let resolver use project mapping
+              );
+              console.log(`📊 Resolved iteration path: ${sprintId} → ${resolvedIterationPath} for ${productId}`);
+            } catch (resolveError) {
+              console.warn(`Failed to resolve iteration path for ${sprintId}: ${resolveError.message}`);
+            }
+          }
+
+          // Pass the resolved iteration path to avoid duplicate resolution
+          workItems = await this.realApiService.getRealWorkItems(productId, sprintId, resolvedIterationPath);
           if (!workItems || workItems.length === 0) {
             throw new Error('No work items from real API');
           }

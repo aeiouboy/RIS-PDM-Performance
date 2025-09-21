@@ -12,6 +12,10 @@
 
 const logger = require('../../utils/logger');
 const axios = require('axios');
+const {
+  mapFrontendProjectToTeam,
+  mapFrontendProjectToAzure
+} = require('../config/projectMapping');
 
 class AzureDevOpsApiService {
   constructor() {
@@ -96,49 +100,208 @@ class AzureDevOpsApiService {
   }
 
   /**
+   * Build candidate Azure DevOps team names for a project
+   * @param {string} project - Frontend or Azure project name
+   * @param {string|null} preferredTeam - Preferred team mapping
+   * @returns {string[]} Candidate team names
+   */
+  getCandidateTeamNames(project, preferredTeam) {
+    const azureProject = mapFrontendProjectToAzure(project) || project;
+    const candidates = [];
+    if (preferredTeam) candidates.push(preferredTeam);
+
+    // Common Azure DevOps default team naming conventions
+    candidates.push(`${azureProject} Team`);
+    candidates.push(azureProject);
+
+    // DaaS-specific team patterns (based on available teams in Azure DevOps)
+    if (azureProject.includes('Data as a Service')) {
+      candidates.push('DaaS Dev Team');
+      candidates.push('DaaS SA Team');
+      candidates.push('DaaS QA Team');
+    }
+
+    // De-duplicate while preserving order
+    return Array.from(new Set(candidates.filter(Boolean)));
+  }
+
+  /**
    * Get real work items for a specific iteration
    * Replaces mock burndown work items with actual Azure DevOps data
    */
-  async getRealWorkItems(projectId, sprintId) {
+  async getRealWorkItems(projectId, sprintId, iterationPath = null) {
     try {
       const project = this.resolveProjectName(projectId);
-      const iterationId = await this.resolveIterationId(project, sprintId);
+      logger.info(`Fetching real work items for project: ${project}, sprint: ${sprintId} using pre-resolved iteration path`);
 
-      if (!iterationId) {
-        logger.warn(`Could not resolve iteration ID for sprint: ${sprintId}`);
-        return [];
+      // Use provided iteration path if available, otherwise try to resolve it
+      let finalIterationPath = iterationPath;
+      if (!finalIterationPath) {
+        finalIterationPath = await this.resolveIterationPath(project, sprintId);
+        if (!finalIterationPath) {
+          logger.warn(`Could not resolve iteration path for sprint: ${sprintId}`);
+          return [];
+        }
       }
 
-      logger.info(`Fetching real work items for project: ${project}, iteration: ${iterationId}`);
+      logger.info(`Using iteration path: ${finalIterationPath} for WIQL query`);
 
-      // Get work item relations from Azure DevOps
-      const workItemRelations = await this.getIterationWorkItems(project, iterationId);
+      // Use WIQL query with exact iteration path
+      const workItems = await this.getWorkItemsByIterationPath(project, finalIterationPath);
 
-      if (!workItemRelations || !workItemRelations.workItemRelations) {
-        logger.warn(`No work items found for iteration: ${iterationId}`);
+      if (!workItems || workItems.length === 0) {
+        logger.warn(`No work items found for iteration path: ${finalIterationPath}`);
         return [];
       }
-
-      // Extract work item IDs
-      const workItemIds = workItemRelations.workItemRelations
-        .filter(relation => relation.target)
-        .map(relation => relation.target.id);
-
-      if (workItemIds.length === 0) {
-        return [];
-      }
-
-      // Get detailed work item information
-      const workItems = await this.getWorkItemDetails(project, workItemIds);
 
       // Calculate story points and work item distribution
       const processedWorkItems = this.processWorkItems(workItems);
 
-      logger.info(`Retrieved ${processedWorkItems.length} real work items`);
+      logger.info(`Retrieved ${processedWorkItems.length} real work items using iteration path WIQL query`);
       return processedWorkItems;
 
     } catch (error) {
       logger.error('Failed to fetch real work items:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Resolve iteration path for a sprint (similar to resolveIterationId but returns path)
+   * @param {string} project - Project name
+   * @param {string} sprintId - Sprint identifier
+   * @returns {Promise<string|null>} Iteration path
+   */
+  async resolveIterationPath(project, sprintId) {
+    if (!this.isConfigured) {
+      logger.warn('Azure DevOps API not configured, cannot resolve iteration path');
+      return null;
+    }
+
+    try {
+      logger.info(`Resolving iteration path for sprint: ${sprintId} in project: ${project}`);
+
+      // Use the iteration resolver to get the path
+      const azureIterationResolver = new (require('./azureIterationResolver'))(this);
+      const iterationPath = await azureIterationResolver.resolveIteration(project, sprintId);
+
+      if (iterationPath) {
+        logger.info(`Resolved iteration path: ${sprintId} → ${iterationPath}`);
+        return iterationPath;
+      }
+
+      logger.warn(`Could not resolve iteration path for sprint: ${sprintId} in project: ${project}`);
+      return null;
+
+    } catch (error) {
+      logger.error('Failed to resolve iteration path:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get work items by sprint name using WIQL pattern matching
+   * @param {string} project - Project name
+   * @param {string} sprintName - Sprint name (e.g., "Sprint 13")
+   * @returns {Promise<Array>} Array of work items
+   */
+  async getWorkItemsBySprintName(project, sprintName) {
+    if (!this.isConfigured) {
+      logger.warn('Azure DevOps API not configured, cannot fetch work items');
+      return [];
+    }
+
+    try {
+      logger.info(`Fetching work items for sprint: ${sprintName} using direct WIQL pattern matching`);
+
+      // Build WIQL query to find work items by sprint name pattern
+      // This searches for iteration paths that contain the sprint name
+      const wiqlQuery = {
+        query: `
+          SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType],
+                 [Microsoft.VSTS.Scheduling.StoryPoints], [System.IterationPath]
+          FROM WorkItems
+          WHERE [System.TeamProject] = '${project}'
+            AND [System.IterationPath] CONTAINS '${sprintName}'
+          ORDER BY [System.Id]
+        `
+      };
+
+      const response = await this.apiClient.post(
+        `/_apis/wit/wiql?api-version=${this.config.apiVersion}`,
+        wiqlQuery
+      );
+
+      const workItemIds = response.data.workItems?.map(wi => wi.id) || [];
+      if (workItemIds.length === 0) {
+        logger.info(`No work items found for sprint pattern: ${sprintName}`);
+        return [];
+      }
+
+      logger.info(`Found ${workItemIds.length} work items for sprint ${sprintName}, fetching details...`);
+
+      // Fetch work item details
+      const workItemDetails = await this.getWorkItemDetails(project, workItemIds);
+      logger.info(`Retrieved ${workItemDetails.length} work item details for sprint ${sprintName}`);
+
+      return workItemDetails;
+
+    } catch (error) {
+      logger.error(`Failed to get work items for sprint: ${sprintName}`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get work items by iteration path using WIQL query
+   * @param {string} project - Project name
+   * @param {string} iterationPath - Iteration path
+   * @returns {Promise<Array>} Array of work items
+   */
+  async getWorkItemsByIterationPath(project, iterationPath) {
+    if (!this.isConfigured) {
+      logger.warn('Azure DevOps API not configured, cannot fetch work items');
+      return [];
+    }
+
+    try {
+      logger.info(`Fetching work items for iteration path: ${iterationPath} using WIQL query`);
+
+      // Build WIQL query to find work items by iteration path
+      const wiqlQuery = {
+        query: `
+          SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType],
+                 [Microsoft.VSTS.Scheduling.StoryPoints], [System.IterationPath]
+          FROM WorkItems
+          WHERE [System.TeamProject] = '${project}'
+          AND ([System.IterationPath] = '${iterationPath}' OR [System.IterationPath] UNDER '${iterationPath}')
+          ORDER BY [System.Id]
+        `
+      };
+
+      // Execute WIQL query
+      const response = await this.apiClient.post(
+        `/${encodeURIComponent(project)}/_apis/wit/wiql?api-version=${this.config.apiVersion}`,
+        wiqlQuery
+      );
+
+      const workItemRefs = response.data.workItems || [];
+
+      if (workItemRefs.length === 0) {
+        logger.info(`No work items found for iteration path: ${iterationPath}`);
+        return [];
+      }
+
+      const workItemIds = workItemRefs.map(ref => ref.id);
+      logger.info(`Found ${workItemIds.length} work items via WIQL, fetching details...`);
+
+      // Get detailed work item information
+      const workItems = await this.getWorkItemDetails(project, workItemIds);
+
+      return workItems;
+
+    } catch (error) {
+      logger.error(`Failed to get work items by iteration path: ${error.message}`);
       return [];
     }
   }
@@ -437,19 +600,57 @@ class AzureDevOpsApiService {
       // Get project teams first
       const teamsResponse = await this.apiClient.get(`/_apis/projects/${encodeURIComponent(project)}/teams?api-version=${this.config.apiVersion}`);
       const teams = teamsResponse.data.value;
-      const defaultTeam = teams && teams.length > 0 ? teams[0] : null;
 
-      if (!defaultTeam) {
-        logger.warn(`No team found for project: ${project}`);
+      if (!teams || teams.length === 0) {
+        logger.warn(`No teams found for project: ${project}`);
         return { workItemRelations: [] };
       }
 
-      // Get work items for iteration
-      const workItemsResponse = await this.apiClient.get(
-        `/${encodeURIComponent(project)}/${encodeURIComponent(defaultTeam.id)}/_apis/work/teamsettings/iterations/${iterationId}/workitems?api-version=${this.config.apiVersion}`
-      );
+      // Use candidate team names like the iteration resolver
+      const preferredTeam = mapFrontendProjectToTeam(project) || project;
+      const candidates = this.getCandidateTeamNames(project, preferredTeam);
 
-      return workItemsResponse.data || { workItemRelations: [] };
+      logger.info(`Trying team candidates for work items: ${JSON.stringify(candidates)}`);
+      logger.info(`Available teams in project: ${teams.map(t => `${t.name} (${t.id})`).join(', ')}`);
+
+      // Try each candidate team until we find one that works
+      for (const candidateName of candidates) {
+        const matchingTeam = teams.find(team =>
+          team.name === candidateName ||
+          team.id === candidateName
+        );
+
+        if (matchingTeam) {
+          try {
+            logger.info(`Trying team '${matchingTeam.name}' (${matchingTeam.id}) for work items`);
+
+            // Get work items for iteration using this team
+            const workItemsResponse = await this.apiClient.get(
+              `/${encodeURIComponent(project)}/${encodeURIComponent(matchingTeam.id)}/_apis/work/teamsettings/iterations/${iterationId}/workitems?api-version=${this.config.apiVersion}`
+            );
+
+            const result = workItemsResponse.data || { workItemRelations: [] };
+
+            if (result.workItemRelations && result.workItemRelations.length > 0) {
+              logger.info(`✅ Found ${result.workItemRelations.length} work items using team '${matchingTeam.name}'`);
+              return result;
+            } else {
+              logger.warn(`Team '${matchingTeam.name}' has no work items for iteration ${iterationId}`);
+            }
+          } catch (teamError) {
+            logger.error(`Team '${matchingTeam.name}' failed for work items: ${teamError.message}`);
+            if (teamError.response) {
+              logger.error(`Response status: ${teamError.response.status}, data: ${JSON.stringify(teamError.response.data)}`);
+            }
+            continue;
+          }
+        } else {
+          logger.warn(`Candidate team '${candidateName}' not found in available teams`);
+        }
+      }
+
+      logger.warn(`No team found with work items for iteration: ${iterationId} in project: ${project}`);
+      return { workItemRelations: [] };
 
     } catch (error) {
       logger.error('Failed to get iteration work items via REST API:', error.message);
