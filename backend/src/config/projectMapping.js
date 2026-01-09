@@ -1,31 +1,38 @@
 /**
  * Project Mapping Configuration
  * Maps frontend project IDs to actual Azure DevOps projects
- * Currently configured to show only PMP and DaaS projects
+ * Currently configured to show PMP, DaaS, and OMNIA projects
  */
 
 // Project enablement configuration - controls which projects are shown in the dashboard
 const PROJECT_CONFIG = {
-  // ✅ ENABLED PROJECTS - Only PMP and DaaS as requested
-  'Product - Data as a Service': { 
-    enabled: true, 
+  // ✅ ENABLED PROJECTS - PMP, DaaS, and OMNIA
+  'Product - Data as a Service': {
+    enabled: true,
     priority: 1,
     iterationPrefix: 'Delivery',
     iterationPattern: /^Delivery\s+(\d+)$/i,
     currentIterationFormat: 'Delivery {n}'
   },
-  'Product - Partner Management Platform': { 
-    enabled: true, 
+  'Product - Partner Management Platform': {
+    enabled: true,
     priority: 2,
     iterationPrefix: 'Delivery',
     iterationPattern: /^Delivery\s+(\d+)$/i,
     currentIterationFormat: 'Delivery {n}'
   },
-  'Team - Product Management': { enabled: true, priority: 3 },
-  'Team - Engineering': { enabled: true, priority: 4 },
-  'Team - QA Testing': { enabled: true, priority: 5 },
-  'Team - DevOps': { enabled: true, priority: 6 },
-  
+  'Product - OMNIA': {
+    enabled: true,
+    priority: 3,
+    iterationPrefix: 'OMS - Sprint',
+    iterationPattern: /^OMS\s*-?\s*Sprint\s+(\d+)$/i,
+    currentIterationFormat: 'OMS - Sprint {n}'
+  },
+  'Team - Product Management': { enabled: true, priority: 4 },
+  'Team - Engineering': { enabled: true, priority: 5 },
+  'Team - QA Testing': { enabled: true, priority: 6 },
+  'Team - DevOps': { enabled: true, priority: 7 },
+
   // ❌ DISABLED PROJECTS - Hidden from dashboard as requested
   'Product - Supplier Connect': { enabled: false, priority: 999 },
   'Product - CFG Workflow': { enabled: false, priority: 999 },
@@ -38,29 +45,30 @@ const TEAM_MAPPING = {
   // ✅ ENABLED PROJECTS - Using EXACT team names from Azure DevOps
   'Product - Data as a Service': 'Product - Data as a Service Team', // Map to DaaS own team
   'Product - Partner Management Platform': 'PMP Developer Team', // 🎯 CONFIRMED: Exact team name from screenshot
+  'Product - OMNIA': 'Product - OMNIA Team', // 🎯 CONFIRMED: Exact team name from Azure DevOps
   'Team - Product Management': 'PMP Developer Team', // Map to PMP Developer Team
-  'Team - Engineering': 'PMP Developer Team', // Map to PMP Developer Team  
+  'Team - Engineering': 'PMP Developer Team', // Map to PMP Developer Team
   'Team - QA Testing': 'PMP QA Team', // 🎯 CONFIRMED: Exact team name from screenshot
   'Team - DevOps': 'PMP Developer Team', // Map to PMP Developer Team
-  
+
   // ❌ DISABLED PROJECTS - Commented out to hide from dashboard
-  // 'Product - Supplier Connect': 'Product - Supplier Connect', 
+  // 'Product - Supplier Connect': 'Product - Supplier Connect',
   // 'Product - CFG Workflow': 'Product - CFG Workflow',
   // 'Product - New OMS': 'Product - New OMS'
 };
 
 const PROJECT_MAPPING = {
-  // ✅ ENABLED PROJECTS - PMP and DaaS only
-  // DaaS maps to its own Azure DevOps project (Product - Data as a Service)
+  // ✅ ENABLED PROJECTS - PMP, DaaS, and OMNIA
   'Product - Data as a Service': 'Product - Data as a Service',
   'Product - Partner Management Platform': 'Product - Partner Management Platform',
+  'Product - OMNIA': 'Product - OMNIA',
   'Team - Product Management': 'Product - Partner Management Platform',
   'Team - Engineering': 'Product - Partner Management Platform',
   'Team - QA Testing': 'Product - Partner Management Platform',
   'Team - DevOps': 'Product - Partner Management Platform',
-  
+
   // ❌ DISABLED PROJECTS - Commented out to hide from dashboard
-  // 'Product - Supplier Connect': 'Product - Supplier Connect', 
+  // 'Product - Supplier Connect': 'Product - Supplier Connect',
   // 'Product - CFG Workflow': 'Product - CFG Workflow',
   // 'Product - New OMS': 'Product - New OMS'
 };
@@ -82,6 +90,31 @@ const mapFrontendProjectToAzure = (frontendProjectId) => {
   }
   
   return mappedProject;
+};
+
+/**
+ * Validate project mapping with logging
+ * @param {string} frontendProject - Frontend project ID
+ * @param {string} azureProject - Mapped Azure DevOps project
+ * @returns {boolean} True if valid mapping
+ */
+const validateProjectMapping = (frontendProject, azureProject) => {
+  if (!frontendProject || !azureProject) {
+    console.warn(`⚠️ Invalid project mapping: frontend="${frontendProject}", azure="${azureProject}"`);
+    return false;
+  }
+
+  // Log the mapping for debugging
+  console.log(`✅ Project mapping validated: "${frontendProject}" → "${azureProject}"`);
+
+  // Check if this is a known mapping
+  const expectedMapping = PROJECT_MAPPING[frontendProject];
+  if (expectedMapping && expectedMapping !== azureProject) {
+    console.warn(`⚠️ Unexpected Azure project mapping: expected="${expectedMapping}", got="${azureProject}"`);
+    return false;
+  }
+
+  return true;
 };
 
 /**
@@ -259,6 +292,7 @@ module.exports = {
   PROJECT_CONFIG,
   TEAM_MAPPING,
   mapFrontendProjectToAzure,
+  validateProjectMapping,
   mapFrontendProjectToTeam,
   getFrontendProjects,
   getAzureProjects,

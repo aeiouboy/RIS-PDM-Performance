@@ -167,7 +167,16 @@ router.get('/products/:productId',
       }
 
       const { productId } = req.params;
-      const { period = 'sprint', sprintId } = req.query;
+      const { period = 'sprint', sprintId, forceRefresh } = req.query;
+
+      // Handle cache invalidation for force refresh
+      if (forceRefresh === 'true') {
+        // Clear filter-specific cache entries
+        if (sprintId) {
+          await cacheService.clearFilterCache(productId, sprintId);
+        }
+        logger.info('Cache cleared for force refresh', { productId, sprintId });
+      }
 
       logger.info(`Fetching detailed metrics for product ${productId}`, {
         productId,
@@ -584,14 +593,19 @@ router.get('/kpis',
         });
       }
 
-      const { period = 'sprint', productId, sprintId, noCache } = req.query;
+      const { period = 'sprint', productId, sprintId, noCache, forceRefresh } = req.query;
       const cacheKey = `kpis-${period}-${productId}-${sprintId}`;
 
-      // Optional cache bypass
-      if (noCache === 'true') {
+      // Handle cache invalidation for force refresh
+      if (forceRefresh === 'true' || noCache === 'true') {
         metricsCache.del(cacheKey);
+        // Clear filter-specific cache entries
+        if (productId && sprintId) {
+          await cacheService.clearFilterCache(productId, sprintId);
+        }
         await cacheService.clearPattern('ris:cache:workItems:*');
         await cacheService.clearPattern('ris:cache:metrics:*');
+        logger.info('Cache cleared for force refresh', { productId, sprintId });
       } else {
         const cachedData = metricsCache.get(cacheKey);
         if (cachedData) {
@@ -669,13 +683,19 @@ router.get('/burndown',
         });
       }
 
-      const { sprintId, productId, noCache } = req.query;
+      const { sprintId, productId, noCache, forceRefresh } = req.query;
       const cacheKey = `burndown-${sprintId}-${productId}`;
 
-      if (noCache === 'true') {
+      // Handle cache invalidation for force refresh
+      if (forceRefresh === 'true' || noCache === 'true') {
         metricsCache.del(cacheKey);
+        // Clear filter-specific cache entries
+        if (productId && sprintId) {
+          await cacheService.clearFilterCache(productId, sprintId);
+        }
         await cacheService.clearPattern('ris:cache:iterations:*');
         await cacheService.clearPattern('ris:cache:workItems:*');
+        logger.info('Cache cleared for force refresh', { productId, sprintId });
       } else {
         const cachedData = metricsCache.get(cacheKey);
         if (cachedData) {

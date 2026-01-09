@@ -15,7 +15,7 @@ const generateWorkItem = (id, options = {}) => ({
     },
     'System.CreatedDate': options.createdDate || '2024-01-01T00:00:00.000Z',
     'System.ChangedDate': options.changedDate || '2024-01-15T00:00:00.000Z',
-    'Microsoft.VSTS.Scheduling.StoryPoints': options.storyPoints || Math.floor(Math.random() * 13) + 1,
+    'Custom.StoryPoint': options.storyPoints || Math.floor(Math.random() * 13) + 1,
     'Microsoft.VSTS.Common.Priority': options.priority || Math.floor(Math.random() * 4) + 1,
     'Microsoft.VSTS.Scheduling.Effort': options.effort || Math.floor(Math.random() * 20) + 5,
     'System.Description': options.description || `Description for work item ${id}`,

@@ -219,7 +219,7 @@ class AzureDevOpsApiService {
       const wiqlQuery = {
         query: `
           SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType],
-                 [Microsoft.VSTS.Scheduling.StoryPoints], [System.IterationPath]
+                 [Custom.StoryPoint], [System.IterationPath]
           FROM WorkItems
           WHERE [System.TeamProject] = '${project}'
             AND [System.IterationPath] CONTAINS '${sprintName}'
@@ -271,7 +271,7 @@ class AzureDevOpsApiService {
       const wiqlQuery = {
         query: `
           SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType],
-                 [Microsoft.VSTS.Scheduling.StoryPoints], [System.IterationPath]
+                 [Custom.StoryPoint], [System.IterationPath]
           FROM WorkItems
           WHERE [System.TeamProject] = '${project}'
           AND ([System.IterationPath] = '${iterationPath}' OR [System.IterationPath] UNDER '${iterationPath}')
@@ -342,7 +342,7 @@ class AzureDevOpsApiService {
         metrics.workItemsByState[state] = (metrics.workItemsByState[state] || 0) + 1;
 
         // Story points (only for User Stories typically)
-        const storyPoints = item.fields['Microsoft.VSTS.Scheduling.StoryPoints'] || 0;
+        const storyPoints = item.fields['Custom.StoryPoint'] ?? 0;
         if (storyPoints > 0) {
           metrics.totalStoryPoints += storyPoints;
           if (this.isCompleted(state)) {
@@ -462,7 +462,7 @@ class AzureDevOpsApiService {
       title: item.fields['System.Title'],
       type: item.fields['System.WorkItemType'],
       state: item.fields['System.State'],
-      storyPoints: item.fields['Microsoft.VSTS.Scheduling.StoryPoints'] || 0,
+      storyPoints: item.fields['Custom.StoryPoint'] ?? 0,
       assignee: item.fields['System.AssignedTo']?.displayName || 'Unassigned',
       priority: item.fields['Microsoft.VSTS.Common.Priority'] || 2,
       iterationPath: item.fields['System.IterationPath'],
@@ -680,7 +680,7 @@ class AzureDevOpsApiService {
         'System.IterationPath',
         'System.AreaPath',
         'System.Tags',
-        'Microsoft.VSTS.Scheduling.StoryPoints',
+        'Custom.StoryPoint',
         'Microsoft.VSTS.Common.Priority'
       ].join(',');
 

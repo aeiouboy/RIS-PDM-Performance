@@ -58,7 +58,7 @@ const azureDevOpsConfig = {
     'System.WorkItemType',
     'System.AssignedTo',
     'System.State',
-    'Microsoft.VSTS.Scheduling.StoryPoints',
+    'Custom.StoryPoint',
     'System.CreatedDate',
     'System.ChangedDate',
     'Microsoft.VSTS.Common.ClosedDate',
@@ -107,7 +107,7 @@ const azureDevOpsConfig = {
   queryTemplates: {
     // Get all active work items for current sprint
     currentSprintWorkItems: `
-      SELECT [System.Id], [System.Title], [System.WorkItemType], [System.AssignedTo], [System.State], [Microsoft.VSTS.Scheduling.StoryPoints]
+      SELECT [System.Id], [System.Title], [System.WorkItemType], [System.AssignedTo], [System.State], [Custom.StoryPoint]
       FROM WorkItems 
       WHERE [System.TeamProject] = @project 
       AND [System.IterationPath] UNDER @currentIteration
@@ -128,7 +128,7 @@ const azureDevOpsConfig = {
 
     // Get completed user stories for velocity calculation
     completedUserStories: `
-      SELECT [System.Id], [System.Title], [Microsoft.VSTS.Scheduling.StoryPoints], [Microsoft.VSTS.Common.ClosedDate]
+      SELECT [System.Id], [System.Title], [Custom.StoryPoint], [Microsoft.VSTS.Common.ClosedDate]
       FROM WorkItems 
       WHERE [System.TeamProject] = @project 
       AND [System.WorkItemType] = 'User Story'
@@ -140,7 +140,7 @@ const azureDevOpsConfig = {
 
     // Get work items by assignee for individual performance
     workItemsByAssignee: `
-      SELECT [System.Id], [System.Title], [System.WorkItemType], [System.State], [Microsoft.VSTS.Scheduling.StoryPoints]
+      SELECT [System.Id], [System.Title], [System.WorkItemType], [System.State], [Custom.StoryPoint]
       FROM WorkItems 
       WHERE [System.TeamProject] = @project 
       AND [System.AssignedTo] = @assignee

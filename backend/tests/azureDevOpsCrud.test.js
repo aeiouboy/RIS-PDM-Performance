@@ -44,7 +44,7 @@ describe('Azure DevOps CRUD Operations - Production Suite', () => {
             uniqueName: 'testuser@example.com',
             imageUrl: 'https://avatar.url'
           },
-          'Microsoft.VSTS.Scheduling.StoryPoints': 5,
+          'Custom.StoryPoint': 5,
           'Microsoft.VSTS.Common.Priority': 2,
           'System.Tags': 'testing;automated;task',
           'System.AreaPath': 'TestProject\\Area1',
@@ -159,7 +159,7 @@ describe('Azure DevOps CRUD Operations - Production Suite', () => {
             displayName: 'New Assignee',
             uniqueName: 'newassignee@example.com'
           },
-          'Microsoft.VSTS.Scheduling.StoryPoints': 8,
+          'Custom.StoryPoint': 8,
           'System.Tags': 'updated;testing;modified'
         }
       };

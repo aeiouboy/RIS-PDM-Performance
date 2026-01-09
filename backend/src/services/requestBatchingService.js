@@ -237,7 +237,7 @@ class RequestBatchingService {
           try {
             const workItemsQuery = await this.azureService.getWorkItems({
               maxResults: 1000,
-              workItemTypes: ['Task', 'Bug', 'User Story', 'Feature'],
+              workItemTypes: ['Task', 'Bug'],
               projectName: projectName
             });
             
@@ -290,7 +290,7 @@ class RequestBatchingService {
         // Original single-project logic
         const workItemsQuery = await this.azureService.getWorkItems({
           maxResults: 2000,
-          workItemTypes: ['Task', 'Bug', 'User Story', 'Feature']
+          workItemTypes: ['Task', 'Bug']
         });
         
         // Batch process work item details for better performance

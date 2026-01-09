@@ -49,11 +49,38 @@ class CacheService {
   /**
    * Generate a standardized cache key
    */
+  /**
+   * Generate a standardized cache key with enhanced filtering support
+   */
   generateKey(namespace, identifier, params = {}) {
     const keyParts = [namespace, identifier];
     
-    // Add sorted parameter keys for consistency
-    const sortedParams = Object.keys(params).sort().map(key => `${key}:${params[key]}`);
+    // Handle enhanced filtering context parameters
+    if (params.project || params.sprint || params.endpoint) {
+      const filterContext = [];
+      
+      if (params.project) {
+        filterContext.push(`project:${params.project}`);
+      }
+      
+      if (params.sprint) {
+        filterContext.push(`sprint:${params.sprint}`);
+      }
+      
+      if (params.endpoint) {
+        filterContext.push(`endpoint:${params.endpoint}`);
+      }
+      
+      if (params.timestamp) {
+        filterContext.push(`ts:${params.timestamp}`);
+      }
+      
+      keyParts.push(...filterContext);
+    }
+    
+    // Add sorted parameter keys for consistency (excluding the special filter params)
+    const { project, sprint, endpoint, timestamp, ...otherParams } = params;
+    const sortedParams = Object.keys(otherParams).sort().map(key => `${key}:${otherParams[key]}`);
     if (sortedParams.length > 0) {
       keyParts.push(...sortedParams);
     }
@@ -217,6 +244,61 @@ class CacheService {
       return clearedCount > 0;
     } catch (error) {
       logger.error(`Cache clear pattern error for ${pattern}:`, error);
+      this.stats.errors++;
+      return false;
+    }
+  }
+
+  /**
+   * Clear cache entries for specific project+sprint combination
+   */
+  async clearFilterCache(project, sprint) {
+    const startTime = Date.now();
+    
+    try {
+      let clearedCount = 0;
+      
+      // Generate patterns for different cache key combinations
+      const patterns = [
+        `*project:${project}*sprint:${sprint}*`,
+        `*sprint:${sprint}*project:${project}*`,
+        `*project:${project}*`,
+        `*sprint:${sprint}*`
+      ];
+      
+      // Clear from Redis using patterns
+      if (redisConfig.isReady()) {
+        for (const pattern of patterns) {
+          const redisCleared = await redisConfig.deletePattern(pattern);
+          if (redisCleared) clearedCount++;
+        }
+      }
+      
+      // Clear from memory cache
+      const memoryKeys = this.memoryCache.keys();
+      let memoryClearedCount = 0;
+      
+      for (const pattern of patterns) {
+        const regexPattern = pattern
+          .replace(/\*/g, '.*')
+          .replace(/\?/g, '.');
+        const regex = new RegExp(regexPattern);
+        
+        const matchingKeys = memoryKeys.filter(key => regex.test(key));
+        matchingKeys.forEach(key => {
+          this.memoryCache.del(key);
+          memoryClearedCount++;
+        });
+      }
+      
+      if (memoryClearedCount > 0) clearedCount++;
+      
+      const duration = Date.now() - startTime;
+      logger.info(`Cleared filter cache for project:${project}, sprint:${sprint} (${duration}ms, affected ${clearedCount} tiers, ${memoryClearedCount} memory keys)`);
+      
+      return clearedCount > 0;
+    } catch (error) {
+      logger.error(`Cache clear filter error for project:${project}, sprint:${sprint}:`, error);
       this.stats.errors++;
       return false;
     }

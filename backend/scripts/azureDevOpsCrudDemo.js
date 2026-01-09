@@ -70,7 +70,7 @@ class AzureDevOpsCrudService extends AzureDevOpsService {
       if (fields.storyPoints) {
         patchDocument.push({
           op: 'add',
-          path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints',
+          path: '/fields/Custom.StoryPoint',
           value: fields.storyPoints
         });
       }
@@ -210,7 +210,7 @@ class AzureDevOpsCrudService extends AzureDevOpsService {
       if (updates.storyPoints !== undefined) {
         patchDocument.push({
           op: 'replace',
-          path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints',
+          path: '/fields/Custom.StoryPoint',
           value: updates.storyPoints
         });
       }

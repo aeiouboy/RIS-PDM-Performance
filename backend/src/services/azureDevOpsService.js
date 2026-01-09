@@ -262,7 +262,7 @@ class AzureDevOpsService {
       return { workItems: [], totalCount: 0, disabled: true };
     }
     const {
-      workItemTypes = ['Task', 'Bug', 'User Story', 'Feature'],
+      workItemTypes = ['Task', 'Bug'],
       states = null, // If null, excludes only 'Removed'
       iterationPath = null,
       areaPath = null,
@@ -327,9 +327,9 @@ class AzureDevOpsService {
         
         wiqlQuery = `
           SELECT [System.Id], [System.Title], [System.WorkItemType], 
-                 [System.AssignedTo], [System.State], [Microsoft.VSTS.Scheduling.StoryPoints],
-                 [System.CreatedDate], [System.ChangedDate], [System.AreaPath], 
-                 [System.IterationPath], [Microsoft.VSTS.Common.Priority]
+                 [System.AssignedTo], [System.State], [Custom.StoryPoint],
+                 [System.CreatedDate], [System.ChangedDate], [Microsoft.VSTS.Common.ClosedDate],
+                 [System.AreaPath], [System.IterationPath], [Microsoft.VSTS.Common.Priority]
           FROM WorkItems 
           WHERE [System.TeamProject] = '${targetProject}'
           AND ${typeFilter}
@@ -434,7 +434,7 @@ class AzureDevOpsService {
         'System.WorkItemType',
         'System.AssignedTo',
         'System.State',
-        'Microsoft.VSTS.Scheduling.StoryPoints',
+        'Custom.StoryPoint',
         'System.CreatedDate',
         'System.ChangedDate',
         'Microsoft.VSTS.Common.ClosedDate',
@@ -805,11 +805,16 @@ class AzureDevOpsService {
       state: fields['System.State'],
       // Story points with robust fallbacks (standard, aliases, Effort/Estimate)
       storyPoints: (() => {
-        // 1) Standard field
-        let sp = fields['Microsoft.VSTS.Scheduling.StoryPoints'];
+        // 1) Custom.StoryPoint field (organization standard)
+        let sp = fields['Custom.StoryPoint'];
 
-        // 2) Custom aliases (e.g., "Story Point", "Story Points", or *.StoryPoints endings)
-        if (sp === undefined || sp === null || sp === 0) {
+        // 2) Fallback to Microsoft standard field if Custom.StoryPoint not available
+        if (sp === undefined || sp === null) {
+          sp = fields['Microsoft.VSTS.Scheduling.StoryPoints'];
+        }
+
+        // 3) Custom aliases (e.g., "Story Point", "Story Points", or *.StoryPoints endings)
+        if (sp === undefined || sp === null) {
           const keys = Object.keys(fields);
           const lower = (s) => s.toLowerCase().trim();
           const exactLabel = keys.find(k => ['story point', 'story points'].includes(lower(k)));
@@ -821,11 +826,11 @@ class AzureDevOpsService {
           }
         }
 
-        // 3) Effort/Estimate fallbacks
+        // 4) Effort/Estimate fallbacks
         const effort = fields['Microsoft.VSTS.Scheduling.Effort'] ?? fields['Effort'];
         const originalEstimate = fields['Microsoft.VSTS.Scheduling.OriginalEstimate'];
         let value = sp;
-        if (value === undefined || value === null || value === 0) {
+        if (value === undefined || value === null) {
           if (effort !== undefined && effort !== null) {
             value = effort; // Agile process uses Effort as story points equivalent
           } else if (originalEstimate !== undefined && originalEstimate !== null) {
@@ -929,7 +934,7 @@ class AzureDevOpsService {
       const workItemsResult = await this.getWorkItems({
         projectName: projectId,
         iterationPath: iterationPath,
-        workItemTypes: ['Task', 'Bug', 'User Story', 'Feature'],
+        workItemTypes: ['Task', 'Bug'],
         states: ['New', 'Active', 'In Progress', 'Resolved', 'Closed', 'Done'],
         maxResults: 200 // CRITICAL: Azure DevOps batch API limit
       });
@@ -1372,7 +1377,7 @@ class AzureDevOpsService {
       if (fields.storyPoints) {
         patchDocument.push({
           op: 'add',
-          path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints',
+          path: '/fields/Custom.StoryPoint',
           value: fields.storyPoints
         });
       }
@@ -1525,7 +1530,7 @@ class AzureDevOpsService {
       if (updates.storyPoints !== undefined) {
         patchDocument.push({
           op: 'replace',
-          path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints',
+          path: '/fields/Custom.StoryPoint',
           value: updates.storyPoints
         });
       }
@@ -2481,7 +2486,7 @@ class AzureDevOpsService {
     }
 
     try {
-      const { startDate, endDate, productId, sprintId, iterationPath, workItemTypes = ['User Story', 'Task', 'Bug', 'Feature'] } = options;
+      const { startDate, endDate, productId, sprintId, iterationPath, workItemTypes = ['Task', 'Bug'] } = options;
 
       // Resolve sprintId to iterationPath if needed
       let resolvedIterationPath = iterationPath;
@@ -2491,7 +2496,7 @@ class AzureDevOpsService {
       }
 
       // Build WIQL query for user's work items
-      let wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType], [System.AssignedTo], [Microsoft.VSTS.Scheduling.StoryPoints], [Microsoft.VSTS.Scheduling.RemainingWork], [Microsoft.VSTS.Scheduling.CompletedWork], [System.CreatedDate], [System.ChangedDate], [Microsoft.VSTS.Common.ClosedDate], [System.IterationPath], [System.AreaPath] FROM WorkItems WHERE [System.AssignedTo] = '${userId}'`;
+      let wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType], [System.AssignedTo], [Custom.StoryPoint], [Microsoft.VSTS.Scheduling.RemainingWork], [Microsoft.VSTS.Scheduling.CompletedWork], [System.CreatedDate], [System.ChangedDate], [Microsoft.VSTS.Common.ClosedDate], [System.IterationPath], [System.AreaPath] FROM WorkItems WHERE [System.AssignedTo] = '${userId}'`;
 
       // Add work item type filter
       if (workItemTypes.length > 0) {

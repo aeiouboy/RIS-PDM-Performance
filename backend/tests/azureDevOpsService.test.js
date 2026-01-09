@@ -126,7 +126,7 @@ describe('Azure DevOps API PoC - Core Functionality', () => {
                 imageUrl: 'https://avatar.url'
               },
               'System.State': 'Active',
-              'Microsoft.VSTS.Scheduling.StoryPoints': 5,
+              'Custom.StoryPoint': 5,
               'System.CreatedDate': '2025-01-01T00:00:00Z',
               'System.ChangedDate': '2025-01-02T00:00:00Z',
               'System.Tags': 'frontend;urgent',
@@ -216,7 +216,7 @@ describe('Azure DevOps API PoC - Core Functionality', () => {
             imageUrl: 'https://avatar.url/jane'
           },
           'System.State': 'Active',
-          'Microsoft.VSTS.Scheduling.StoryPoints': 3,
+          'Custom.StoryPoint': 3,
           'Microsoft.VSTS.Common.Priority': 2,
           'System.CreatedDate': '2025-01-01T10:00:00Z',
           'System.ChangedDate': '2025-01-02T15:30:00Z',
@@ -602,7 +602,7 @@ describe('Azure DevOps API PoC - Core Functionality', () => {
           'System.Title': 'Performance Dashboard Bug',
           'System.WorkItemType': 'Bug',
           'System.State': 'Active',
-          'Microsoft.VSTS.Scheduling.StoryPoints': 8,
+          'Custom.StoryPoint': 8,
           'Bug types': 'Performance'
         }
       };

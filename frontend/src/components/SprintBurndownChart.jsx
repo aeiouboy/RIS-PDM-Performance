@@ -2,18 +2,46 @@ import React, { useMemo, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 
-const SprintBurndownChart = React.memo(({ 
-  data = [], 
-  loading = false, 
-  height = 300, 
+const SprintBurndownChart = React.memo(({
+  data = [],
+  loading = false,
+  height = 300,
   showIdealLine = true,
-  className = '' 
+  className = ''
 }) => {
+  // Validate data before processing
+  const validateData = useCallback((inputData) => {
+    if (!Array.isArray(inputData)) {
+      console.warn('SprintBurndownChart: Invalid data format - expected array');
+      return [];
+    }
+
+    // Filter out invalid entries
+    return inputData.filter(item => {
+      if (!item || typeof item !== 'object') return false;
+
+      // Check required fields
+      const hasRequiredFields =
+        (item.date || item.day !== undefined) &&
+        (item.actualRemaining !== undefined || item.idealRemaining !== undefined);
+
+      if (!hasRequiredFields) {
+        console.warn('SprintBurndownChart: Invalid data entry', item);
+        return false;
+      }
+
+      return true;
+    });
+  }, []);
+
   // Memoize chart data to prevent unnecessary recalculations
   const chartData = useMemo(() => {
+    // Validate and filter data
+    const validatedData = validateData(data);
+
     // Only show real data - don't fall back to sample data
-    return data.length > 0 ? data : [];
-  }, [data]);
+    return validatedData.length > 0 ? validatedData : [];
+  }, [data, validateData]);
 
   // Memoize calculated values
   const chartMetrics = useMemo(() => {
@@ -321,4 +349,44 @@ const SprintBurndownChart = React.memo(({
 // Set display name for better debugging
 SprintBurndownChart.displayName = 'SprintBurndownChart';
 
-export default SprintBurndownChart;
+// Error Boundary for the chart
+class ChartErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('SprintBurndownChart error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-error-50 border border-error-200 text-error-700 px-4 py-3 rounded-lg">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <span>Error rendering burndown chart. Invalid data format.</span>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// Export wrapped component
+const SprintBurndownChartWithErrorBoundary = (props) => (
+  <ChartErrorBoundary>
+    <SprintBurndownChart {...props} />
+  </ChartErrorBoundary>
+);
+
+export default SprintBurndownChartWithErrorBoundary;

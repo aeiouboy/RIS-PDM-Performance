@@ -59,86 +59,8 @@ const Dashboard = () => {
   }, [selectedProduct, forceTs]);
   
   // Helper function to resolve sprint ID to iteration path
-  const getSprintIterationPath = (sprintId) => {
-    if (!sprintId || sprintId === 'all-sprints') return null;
-    
-    // Find sprint from API data
-    const sprint = sprintData.find(s => s.id === sprintId);
-    if (sprint?.path) {
-      // For DaaS, convert full path to simple format
-      if (selectedProduct === 'Product - Data as a Service' && sprint.path.includes('\\')) {
-        const pathParts = sprint.path.split('\\');
-        const iterationName = pathParts[pathParts.length - 1]; // Get last part
-        console.log(`📊 DaaS: Converting full path "${sprint.path}" → simple format "${iterationName}"`);
-        return iterationName;
-      }
-      console.log(`📊 Resolved sprint ${sprintId} → ${sprint.path}`);
-      return sprint.path;
-    }
-    
-    // Construct iteration path based on project and sprint
-    // For DaaS: Use simple format extracted from sprint API data
-    // For PMP: Use full path format
-    const constructIterationPath = (projectName, sprintName) => {
-      if (projectName === 'Product - Data as a Service') {
-        // DaaS uses simple "Delivery" format (not full path due to team resolution issues)
-        
-        // First, try to find the sprint in our sprint data
-        const sprint = sprintData.find(s => s.id === sprintName);
-        if (sprint) {
-          // For DaaS, convert full path to simple format
-          // "Product - Data as a Service\Delivery 12" → "Delivery 12"
-          if (sprint.path && sprint.path.includes('\\')) {
-            const pathParts = sprint.path.split('\\');
-            const iterationName = pathParts[pathParts.length - 1]; // Get last part
-            console.log(`📊 DaaS: Converting full path "${sprint.path}" → simple format "${iterationName}"`);
-            return iterationName;
-          }
-          // If no backslash, use the name directly
-          return sprint.name;
-        }
-        
-        // Handle common sprint name patterns
-        if (sprintName === 'current') {
-          // Find current sprint by date from sprint data
-          const now = new Date();
-          const currentSprint = sprintData.find(s => {
-            if (s.id === 'current' || (s.startDate && s.endDate)) {
-              if (s.id === 'current') return true;
-              const startDate = new Date(s.startDate);
-              const endDate = new Date(s.endDate);
-              return startDate <= now && now <= endDate;
-            }
-            return false;
-          });
-          
-          if (currentSprint) {
-            console.log(`📊 DaaS: Found current sprint "${currentSprint.name}"`);
-            return currentSprint.name;
-          }
-          // If unknown, allow backend to resolve 'current'
-          return 'current';
-        }
-        
-        // Handle delivery-X format
-        if (sprintName.startsWith('delivery-')) return `Delivery ${sprintName.replace('delivery-', '')}`;
-        if (sprintName.startsWith('Delivery ')) return sprintName; // Already in correct format
-        return sprintName; // Use as-is for DaaS
-        
-      } else if (projectName === 'Product - Partner Management Platform') {
-        // PMP: prefer backend resolution for 'current'; otherwise full path
-        if (sprintName === 'current') return 'current';
-        if (sprintName.startsWith('delivery-')) return `${projectName}\\Delivery ${sprintName.replace('delivery-', '')}`;
-        return `${projectName}\\${sprintName}`;
-      }
-      // Default fallback
-      return `${projectName}\\${sprintName}`;
-    };
-    
-    const iterationPath = constructIterationPath(selectedProduct, sprintId);
-    console.log(`📊 Constructed iteration path: ${selectedProduct} + ${sprintId} → ${iterationPath}`);
-    return iterationPath;
-  };
+  // Removed getSprintIterationPath - backend now handles iteration resolution
+  // Simply pass sprint IDs to API calls and let backend resolve the proper iteration path
   
   // Swipe navigation for mobile
   const swipeNavigation = useSwipeNavigation({ 
@@ -684,7 +606,7 @@ const Dashboard = () => {
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-400 to-purple-600"></div>
           <TaskDistributionDashboard
             productId={selectedProduct !== 'all-projects' ? normalizeProjectId(selectedProduct) : null}
-            iterationPath={getSprintIterationPath(selectedSprint)}
+            sprintId={selectedSprint}
             className="animate-fade-in"
             style={{ animationDelay: '0.3s' }}
           />

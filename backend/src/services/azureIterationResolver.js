@@ -77,8 +77,17 @@ class AzureIterationResolver {
    * @param {string} teamName - Team name (optional)
    * @returns {Promise<string|null>} Resolved iteration path or null
    */
+  /**
+   * Resolve iteration path with intelligent fallbacks
+   * @param {string} project - Azure DevOps project name
+   * @param {string} requestedIteration - Requested iteration (e.g., 'current', 'sprint-18')
+   * @param {string} teamName - Team name (optional)
+   * @returns {Promise<string|null>} Resolved iteration path or null
+   */
   async resolveIteration(project, requestedIteration, teamName = null) {
-    const cacheKey = `${project}:${teamName}:${requestedIteration}`;
+    // Map frontend project to Azure project for consistent cache keys
+    const azureProject = mapFrontendProjectToAzure(project) || project;
+    const cacheKey = `${azureProject}:${project}:${teamName}:${requestedIteration}`;
     
     // Check cache first
     const cached = this.getCachedIteration(cacheKey);
@@ -113,9 +122,9 @@ class AzureIterationResolver {
       // Cache the result
       if (resolvedPath) {
         this.cacheIteration(cacheKey, resolvedPath);
-        logger.info(`Resolved iteration: ${requestedIteration} → ${resolvedPath} for project: ${project}`);
+        logger.info(`Resolved iteration: ${requestedIteration} → ${resolvedPath} for project: ${project} (Azure: ${azureProject})`);
       } else {
-        logger.warn(`Could not resolve iteration: ${requestedIteration} for project: ${project}`);
+        logger.warn(`Could not resolve iteration: ${requestedIteration} for project: ${project} (Azure: ${azureProject})`);
       }
 
       return resolvedPath;
@@ -123,6 +132,7 @@ class AzureIterationResolver {
     } catch (error) {
       logger.error(`Error resolving iteration path: ${error.message}`, {
         project,
+        azureProject,
         requestedIteration,
         teamName
       });
@@ -407,6 +417,42 @@ class AzureIterationResolver {
   clearCache() {
     this.iterationCache.clear();
     logger.info('Iteration cache cleared');
+  }
+
+  /**
+   * Clear cache entries for specific project+sprint combination
+   * @param {string} project - Project name (frontend or Azure)
+   * @param {string} sprint - Sprint/iteration identifier
+   */
+  clearProjectSprintCache(project, sprint) {
+    const azureProject = mapFrontendProjectToAzure(project) || project;
+    const keysToDelete = [];
+    
+    // Find all cache keys that match the project+sprint combination
+    for (const [key] of this.iterationCache) {
+      // Keys are in format: azureProject:frontendProject:teamName:requestedIteration
+      const keyParts = key.split(':');
+      if (keyParts.length >= 4) {
+        const [cacheAzureProject, cacheFrontendProject, , cacheIteration] = keyParts;
+        
+        // Match if project matches (either azure or frontend) and iteration matches
+        if ((cacheAzureProject === azureProject || cacheFrontendProject === project) && 
+            (cacheIteration === sprint || cacheIteration.toLowerCase().includes(sprint.toLowerCase()))) {
+          keysToDelete.push(key);
+        }
+      }
+    }
+    
+    // Delete matched keys
+    keysToDelete.forEach(key => {
+      this.iterationCache.delete(key);
+    });
+    
+    if (keysToDelete.length > 0) {
+      logger.info(`Cleared ${keysToDelete.length} iteration cache entries for project: ${project}, sprint: ${sprint}`);
+    }
+    
+    return keysToDelete.length;
   }
 
   /**

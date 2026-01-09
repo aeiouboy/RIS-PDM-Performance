@@ -11,6 +11,7 @@ const {
   calculateSprintMetrics
 } = require('../utils/dataTransformers');
 const AzureDevOpsApiService = require('./azureDevOpsApiService');
+const cacheService = require('./cacheService');
 
 class MetricsCalculatorService {
   constructor(azureDevOpsService) {
@@ -18,6 +19,7 @@ class MetricsCalculatorService {
     this.realApiService = new AzureDevOpsApiService(); // New real API service
     this.cache = new Map();
     this.cacheTTL = 5 * 60 * 1000; // 5 minutes
+    this.cacheService = cacheService; // Enhanced cache service for filtering
   }
 
   /**
@@ -260,12 +262,12 @@ class MetricsCalculatorService {
     if (startDate && endDate) {
       queryOptions.customQuery = `
         SELECT [System.Id], [System.Title], [System.WorkItemType], [System.AssignedTo], 
-               [System.State], [Microsoft.VSTS.Scheduling.StoryPoints], [System.CreatedDate], 
+               [System.State], [Custom.StoryPoint], [System.CreatedDate], 
                [System.ChangedDate], [Microsoft.VSTS.Common.ClosedDate], [System.AreaPath], 
                [System.IterationPath], [Microsoft.VSTS.Common.Priority]
         FROM WorkItems 
         WHERE [System.TeamProject] = @project 
-        AND [System.WorkItemType] IN ('Task', 'Bug', 'User Story', 'Feature')
+        AND [System.WorkItemType] IN ('Task', 'Bug')
         AND [System.State] <> 'Removed'
         AND [System.ChangedDate] >= '${startDate}'
         AND [System.ChangedDate] <= '${endDate}'
@@ -293,15 +295,38 @@ class MetricsCalculatorService {
    * @private
    */
   async getWorkItemsForProduct(productId, { sprintId } = {}) {
-    // ✅ FIXED: Map frontend project to actual Azure DevOps project
+    // Map frontend project to actual Azure DevOps project
     const azureProjectName = mapFrontendProjectToAzure(productId) || productId;
+    
+    // Clear cache if filtering context changes
+    if (sprintId && this.cacheService) {
+      await this.cacheService.clearFilterCache(productId, sprintId);
+    }
+    
+    // Generate enhanced cache key for filtering context
+    const cacheKey = this.cacheService ? 
+      this.cacheService.generateKey('workitems', 'product', {
+        project: productId,
+        sprint: sprintId || 'all',
+        endpoint: 'getWorkItemsForProduct',
+        azureProject: azureProjectName
+      }) : null;
+    
+    // Try to get from cache first
+    if (cacheKey && this.cacheService) {
+      const cachedData = await this.cacheService.get(cacheKey);
+      if (cachedData) {
+        console.log(`📊 Cache hit for work items: ${productId}/${sprintId}`);
+        return cachedData;
+      }
+    }
     
     let queryOptions = {
       projectName: azureProjectName, // Use mapped Azure project instead of frontend project
       maxResults: 1000
     };
 
-    // ✅ FIXED: Resolve iteration path properly instead of passing raw sprintId
+    // Resolve iteration path properly instead of passing raw sprintId
     if (sprintId) {
       try {
         // Use Azure DevOps service iteration resolution for proper path resolution
@@ -327,13 +352,22 @@ class MetricsCalculatorService {
     console.log(`📊 Frontend Project: "${productId}" → Azure Project: "${azureProjectName}" with options:`, queryOptions);
     const response = await this.azureService.getWorkItems(queryOptions);
     
+    let workItems = [];
     if (response.workItems.length > 0) {
       const workItemIds = response.workItems.map(wi => wi.id);
       const detailsResponse = await this.azureService.getWorkItemDetails(workItemIds, null, productId);
-      return detailsResponse.workItems;
+      workItems = detailsResponse.workItems;
     }
 
-    return [];
+    // Cache the result with enhanced key
+    if (cacheKey && this.cacheService && workItems.length > 0) {
+      await this.cacheService.set(cacheKey, workItems, {
+        ttl: 300 // 5 minutes for filtered data
+      });
+      console.log(`📊 Cached work items for ${productId}/${sprintId}`);
+    }
+
+    return workItems;
   }
 
 
@@ -465,7 +499,7 @@ class MetricsCalculatorService {
     if (!sprintInfo) return 78.9; // Default value
     
     const committed = sprintInfo.workItemCount || workItems.length;
-    const completed = workItems.filter(wi => ['Closed', 'Done', 'Resolved'].includes(wi.state)).length;
+    const completed = workItems.filter(wi => ['Closed', 'Done', 'Resolved', 'Deploy'].includes(wi.state)).length;
     
     return committed > 0 ? ((completed / committed) * 100).toFixed(1) : 0;
   }
@@ -480,7 +514,7 @@ class MetricsCalculatorService {
 
   async calculateAverageCycleTime(workItems) {
     const completedItems = workItems.filter(item => 
-      ['Closed', 'Done', 'Resolved'].includes(item.state) && 
+      ['Closed', 'Done', 'Resolved', 'Deploy'].includes(item.state) && 
       item.createdDate && 
       item.closedDate
     );
@@ -527,7 +561,7 @@ class MetricsCalculatorService {
 
     return {
       total: workItems.length,
-      completed: workItems.filter(wi => ['Closed', 'Done', 'Resolved'].includes(wi.state)).length,
+      completed: workItems.filter(wi => ['Closed', 'Done', 'Resolved', 'Deploy'].includes(wi.state)).length,
       inProgress: workItems.filter(wi => ['Active', 'In Progress'].includes(wi.state)).length,
       blocked: workItems.filter(wi => wi.reason === 'Blocked').length,
       byType,
@@ -692,7 +726,7 @@ class MetricsCalculatorService {
 
           return {
             total: filteredItems.length,
-            completed: filteredItems.filter(wi => wi.state === 'Done' || wi.state === 'Closed').length,
+            completed: filteredItems.filter(wi => wi.state === 'Done' || wi.state === 'Closed' || wi.state === 'Deploy').length,
             inProgress: filteredItems.filter(wi => wi.state === 'Active' || wi.state === 'In Progress').length,
             backlog: filteredItems.filter(wi => wi.state === 'New' || wi.state === 'Approved').length,
             byType: this.categorizeWorkItemsByType(filteredItems),
@@ -755,12 +789,12 @@ class MetricsCalculatorService {
     if (startDate && endDate) {
       queryOptions.customQuery = `
         SELECT [System.Id], [System.Title], [System.WorkItemType], [System.AssignedTo], 
-               [System.State], [Microsoft.VSTS.Scheduling.StoryPoints], [System.CreatedDate], 
+               [System.State], [Custom.StoryPoint], [System.CreatedDate], 
                [System.ChangedDate], [Microsoft.VSTS.Common.ClosedDate], [System.AreaPath], 
                [System.IterationPath], [Microsoft.VSTS.Common.Priority]
         FROM WorkItems 
         WHERE [System.TeamProject] = @project 
-        AND [System.WorkItemType] IN ('Task', 'Bug', 'User Story', 'Feature')
+        AND [System.WorkItemType] IN ('Task', 'Bug')
         AND [System.AssignedTo] = '${userId}'
         AND [System.ChangedDate] >= '${startDate}'
         AND [System.ChangedDate] <= '${endDate}'
@@ -810,11 +844,11 @@ class MetricsCalculatorService {
     const tasks = workItems.filter(item => item.type === 'Task');
     
     const bugsCreated = bugs.filter(bug => 
-      !['Closed', 'Done', 'Resolved'].includes(bug.state)
+      !['Closed', 'Done', 'Resolved', 'Deploy'].includes(bug.state)
     ).length;
     
     const bugsFixed = bugs.filter(bug => 
-      ['Closed', 'Done', 'Resolved'].includes(bug.state)
+      ['Closed', 'Done', 'Resolved', 'Deploy'].includes(bug.state)
     ).length;
 
     const bugRatio = tasks.length > 0 ? 
@@ -861,7 +895,7 @@ class MetricsCalculatorService {
       timeline.push({
         date: dateStr,
         itemsCompleted: dayItems.filter(item => 
-          ['Closed', 'Done', 'Resolved'].includes(item.state)
+          ['Closed', 'Done', 'Resolved', 'Deploy'].includes(item.state)
         ).length,
         storyPoints,
         activities: dayItems.map(item => ({
@@ -1072,7 +1106,7 @@ class MetricsCalculatorService {
    */
   calculateUserVelocity(workItems) {
     const recentItems = workItems
-      .filter(item => ['Closed', 'Done', 'Resolved'].includes(item.state))
+      .filter(item => ['Closed', 'Done', 'Resolved', 'Deploy'].includes(item.state))
       .slice(0, 10); // Last 10 completed items
     
     const totalStoryPoints = recentItems.reduce((sum, item) => 
@@ -1814,7 +1848,7 @@ class MetricsCalculatorService {
 
   calculateBugMetrics(workItems) {
     const bugs = workItems.filter(item => item.type === 'Bug');
-    const openBugs = bugs.filter(bug => !['Closed', 'Done', 'Resolved'].includes(bug.state));
+    const openBugs = bugs.filter(bug => !['Closed', 'Done', 'Resolved', 'Deploy'].includes(bug.state));
     
     // Show total bugs (all bugs regardless of status)
     const totalBugs = bugs.length;
@@ -1847,20 +1881,39 @@ class MetricsCalculatorService {
   }
 
   generateBurndownChart(workItems, sprintData, sprintDuration) {
-    // Fix: Ensure we only count actual story points, not default to 1 for missing values  
-    const totalStoryPoints = workItems.reduce((sum, item) => {
-      const storyPoints = item.storyPoints || 0; // Ensure 0 for undefined/null
-      return sum + (typeof storyPoints === 'number' ? storyPoints : 0);
-    }, 0);
+    // 🎯 FIXED: Check if project uses story points or work item count
+    // Only consider it has story points if there are actual positive values
+    const totalStoryPoints = workItems.reduce((sum, item) => sum + (item.storyPoints || 0), 0);
+    const hasStoryPoints = totalStoryPoints > 0;
+
+    let totalWork;
+    let workUnit;
+
+    if (hasStoryPoints) {
+      // Use story points if available
+      totalWork = workItems.reduce((sum, item) => {
+        const storyPoints = item.storyPoints || 0;
+        return sum + (typeof storyPoints === 'number' ? storyPoints : 0);
+      }, 0);
+      workUnit = 'story points';
+      console.log(`🔥 BURNDOWN CHART: Using STORY POINTS - Total: ${totalWork} ${workUnit}`);
+    } else {
+      // Use work item count if no story points
+      totalWork = workItems.length;
+      workUnit = 'work items';
+      console.log(`🔥 BURNDOWN CHART: Using WORK ITEM COUNT - Total: ${totalWork} ${workUnit}`);
+    }
+    
     const burndownData = [];
     
     for (let day = 0; day <= sprintDuration; day++) {
-      const idealRemaining = totalStoryPoints - (totalStoryPoints * day / sprintDuration);
+      const idealRemaining = totalWork - (totalWork * day / sprintDuration);
       
       // Calculate actual remaining based on completed work
       const completedByDay = this.getCompletedWorkByDay(workItems, day, sprintData.startDate);
-      const actualRemaining = Math.max(0, totalStoryPoints - completedByDay);
+      const actualRemaining = Math.max(0, totalWork - completedByDay);
       
+      console.log(`🔥 BURNDOWN CHART [Day ${day}]: ideal=${idealRemaining.toFixed(1)}, completed=${completedByDay}, actual=${actualRemaining.toFixed(1)} ${workUnit}`);
       
       burndownData.push({
         day: `Day ${day}`,
@@ -1989,29 +2042,139 @@ class MetricsCalculatorService {
 
   getCompletedWorkByDay(workItems, day, sprintStart) {
     const targetDate = this.addDays(sprintStart, day);
-    
-    
-    return workItems
-      .filter(item => {
-        // Check if work item is completed by state (primary method)
-        const isCompletedByState = ['Closed', 'Completed', 'Done', 'Resolved'].includes(item.state);
+    const sprintEnd = this.addDays(sprintStart, 14); // Assume 14-day sprint
+
+    // 🔍 DEBUG: Log work items for DaaS Delivery 13 burndown calculation
+    if (workItems.length > 0) {
+      console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Processing ${workItems.length} work items for burndown`);
+      console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: sprintStart=${sprintStart}, targetDate=${targetDate.toISOString()}, sprintEnd=${sprintEnd.toISOString()}`);
+      
+      const sampleItem = workItems[0];
+      console.log(`🔥 Sample work item: ID=${sampleItem.id}, state="${sampleItem.state}", storyPoints=${sampleItem.storyPoints}, closedDate="${sampleItem.closedDate}"`);
+
+      const stateDistribution = workItems.reduce((acc, item) => {
+        acc[item.state] = (acc[item.state] || 0) + 1;
+        return acc;
+      }, {});
+      console.log(`🔥 State distribution:`, stateDistribution);
+      
+      // 🔥 DEBUG: Show date range analysis
+      const itemsWithClosedDates = workItems.filter(item => item.closedDate && ['Closed', 'Completed', 'Done', 'Resolved', 'Deploy'].includes(item.state));
+      if (itemsWithClosedDates.length > 0) {
+        const closedDates = itemsWithClosedDates.map(item => new Date(item.closedDate).toISOString()).sort();
+        console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Items with closed dates: ${itemsWithClosedDates.length}/${workItems.length}`);
+        console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Closed date range: ${closedDates[0]} to ${closedDates[closedDates.length-1]}`);
+        console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Target date: ${targetDate.toISOString()}`);
         
-        // If not completed by state, skip it
-        if (!isCompletedByState) {
-          return false;
-        }
+        // Count how many closed dates are <= targetDate (old logic)
+        const itemsClosedByTargetDate = itemsWithClosedDates.filter(item => new Date(item.closedDate) <= targetDate);
+        console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Items closed by target date (old logic): ${itemsClosedByTargetDate.length}/${itemsWithClosedDates.length}`);
         
-        // If has closedDate, use that for precise completion tracking
-        if (item.closedDate) {
+        // Count how many would be included with new logic (closed after sprint end counts toward sprint end)
+        const itemsClosedByNewLogic = itemsWithClosedDates.filter(item => {
           const closedDate = new Date(item.closedDate);
-          return closedDate <= targetDate;
+          return closedDate <= targetDate || (closedDate > sprintEnd && targetDate >= sprintEnd);
+        });
+        console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Items closed by new logic: ${itemsClosedByNewLogic.length}/${itemsWithClosedDates.length}`);
+      }
+
+      // 🔥 DEBUG: Check story points distribution in all work items
+      const storyPointsDistribution = workItems.reduce((acc, item) => {
+        const sp = item.storyPoints || 0;
+        acc[sp] = (acc[sp] || 0) + 1;
+        return acc;
+      }, {});
+      console.log(`🔥 Story points distribution:`, storyPointsDistribution);
+    }
+
+    const totalCompletedItems = workItems.filter(item =>
+      ['Closed', 'Completed', 'Done', 'Resolved', 'Deploy'].includes(item.state)
+    );
+
+    // 🔥 DEBUG: Check if we have any completed items
+    console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Found ${totalCompletedItems.length}/${workItems.length} completed items`);
+
+    // 🔥 DEBUG: Check story points in completed items
+    const completedStoryPoints = totalCompletedItems.reduce((sum, item) => sum + (item.storyPoints || 0), 0);
+    console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Completed items have ${completedStoryPoints} total story points`);
+
+    const completedItems = workItems.filter(item => {
+      // Check if work item is completed by state (primary method)
+      const isCompletedByState = ['Closed', 'Completed', 'Done', 'Resolved', 'Deploy'].includes(item.state);
+
+      // If not completed by state, skip it
+      if (!isCompletedByState) {
+        return false;
+      }
+
+      // If has closedDate, use enhanced date logic for completion tracking
+      if (item.closedDate) {
+        const closedDate = new Date(item.closedDate);
+        
+        // ✅ FIXED: Enhanced date logic to handle work items closed after sprint end
+        // If closed within sprint period, use exact date
+        if (closedDate <= sprintEnd) {
+          const isCompleted = closedDate <= targetDate;
+          if (Math.random() < 0.1 || day === 0) { // Log 10% or always for Day 0
+            console.log(`🔥 WITHIN SPRINT: Item ${item.id}, closedDate=${closedDate.toISOString()}, targetDate=${targetDate.toISOString()}, isCompleted=${isCompleted}`);
+          }
+          return isCompleted;
         }
         
-        // If completed by state but no closedDate, assume completed by now (current day)
-        // This handles work items that are marked as closed but don't have a specific close date
-        return true;
-      })
-      .reduce((sum, item) => sum + (item.storyPoints || 0), 0);
+        // ✅ NEW LOGIC: For items closed after sprint end, count them as completed on sprint end day
+        // This handles the real-world scenario where work is completed during sprint but closed administratively later
+        if (closedDate > sprintEnd && targetDate >= sprintEnd) {
+          if (Math.random() < 0.1 || day === 0) { // Log 10% or always for Day 0
+            console.log(`🔥 POST-SPRINT: Item ${item.id}, closedDate=${closedDate.toISOString()} (after sprint), counting as completed on sprint end`);
+          }
+          return true;
+        }
+        
+        // If we're before sprint end and item was closed after sprint end, not completed yet
+        if (Math.random() < 0.1 || day === 0) { // Log 10% or always for Day 0
+          console.log(`🔥 NOT YET: Item ${item.id}, closedDate=${closedDate.toISOString()} (after sprint), targetDate=${targetDate.toISOString()}, not completed yet`);
+        }
+        return false;
+      }
+
+      // FIXED: For completed items without closedDate, distribute completion progressively
+      // Instead of assuming all completed on day 0, simulate realistic completion progression
+      const completedItemIndex = totalCompletedItems.findIndex(completed => completed.id === item.id);
+      const totalCompleted = totalCompletedItems.length;
+
+      if (totalCompleted === 0) return false;
+
+      // Distribute completed items across the sprint duration
+      const completionDay = Math.floor((completedItemIndex / totalCompleted) * 14);
+      const isCompletedByDistribution = day >= completionDay;
+      
+      if (Math.random() < 0.1 || day === 0) { // Log 10% or always for Day 0
+        console.log(`🔥 DISTRIBUTION: Item ${item.id} (no closedDate), completionDay=${completionDay}, day=${day}, isCompleted=${isCompletedByDistribution}`);
+      }
+      
+      return isCompletedByDistribution;
+    });
+
+    // 🎯 FIXED: Check if project uses story points or work item count
+    // Only consider it has story points if there are actual positive values
+    const totalStoryPoints = workItems.reduce((sum, item) => sum + (item.storyPoints || 0), 0);
+    const hasStoryPoints = totalStoryPoints > 0;
+
+    console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Total story points in all work items: ${totalStoryPoints}, hasStoryPoints: ${hasStoryPoints}`);
+    console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Filtered completedItems.length: ${completedItems.length}`);
+
+    let completedValue;
+    if (hasStoryPoints) {
+      // Use story points if available
+      completedValue = completedItems.reduce((sum, item) => sum + (item.storyPoints || 0), 0);
+      console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Using STORY POINTS - ${completedValue} completed story points from ${completedItems.length} items`);
+    } else {
+      // Use work item count if no story points
+      completedValue = completedItems.length;
+      console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Using WORK ITEM COUNT - ${completedValue} completed work items`);
+    }
+
+    return completedValue;
   }
 
   estimateBusinessValue(workItem) {
@@ -2030,7 +2193,7 @@ class MetricsCalculatorService {
     if (workItems.length === 0) return 0;
     
     const completed = workItems.filter(item => 
-      ['Closed', 'Done', 'Resolved'].includes(item.state)
+      ['Closed', 'Done', 'Resolved', 'Deploy'].includes(item.state)
     ).length;
     
     return (completed / workItems.length) * 100;
@@ -2067,23 +2230,75 @@ class MetricsCalculatorService {
   }
 
   async getSprintData(sprintId, productId) {
-    // Mock implementation - would query Azure DevOps iterations API
-    // DaaS-aware sprint data
+    try {
+      // 🎯 FIXED: Get real sprint data from Azure DevOps instead of hardcoded mock data
+      const iterations = await this.azureService.iterationResolver.getProjectIterations(
+        productId,
+        null // Let resolver determine team
+      );
+
+      if (iterations && iterations.length > 0) {
+        let targetIteration = null;
+        
+        if (sprintId && sprintId !== 'current') {
+          // Find specific iteration by name or ID
+          targetIteration = iterations.find(iter => 
+            iter.name === sprintId || 
+            iter.id === sprintId || 
+            iter.path.includes(sprintId) ||
+            iter.name.toLowerCase().includes(sprintId.toLowerCase())
+          );
+        } else {
+          // Find current iteration by date
+          const now = new Date();
+          targetIteration = iterations.find(iter => {
+            if (!iter.attributes?.startDate || !iter.attributes?.finishDate) return false;
+            const startDate = new Date(iter.attributes.startDate);
+            const endDate = new Date(iter.attributes.finishDate);
+            return startDate <= now && endDate >= now;
+          });
+          
+          // If no current found, get most recent completed iteration
+          if (!targetIteration) {
+            const completedIterations = iterations
+              .filter(iter => iter.attributes?.finishDate && new Date(iter.attributes.finishDate) < now)
+              .sort((a, b) => new Date(b.attributes.finishDate) - new Date(a.attributes.finishDate));
+            targetIteration = completedIterations[0];
+          }
+        }
+
+        if (targetIteration && targetIteration.attributes) {
+          console.log(`🎯 SPRINT DATA: Using real Azure DevOps data for ${targetIteration.name}: ${targetIteration.attributes.startDate} to ${targetIteration.attributes.finishDate}`);
+          return {
+            id: targetIteration.id,
+            name: targetIteration.name,
+            startDate: targetIteration.attributes.startDate,
+            endDate: targetIteration.attributes.finishDate
+          };
+        }
+      }
+
+      console.warn(`⚠️ SPRINT DATA: No real iteration found for ${sprintId}/${productId}, falling back to mock data`);
+    } catch (error) {
+      console.error(`❌ SPRINT DATA: Error fetching real iteration data for ${sprintId}/${productId}:`, error.message);
+    }
+
+    // 🔄 FALLBACK: Updated mock data with correct dates as last resort
     if (productId === 'Product - Data as a Service') {
       return {
         id: sprintId || 'current',
-        name: 'Delivery 12',
-        startDate: '2025-08-25',
-        endDate: '2025-09-05'
+        name: 'Delivery 13',
+        startDate: '2025-09-08T00:00:00.000Z', // ✅ FIXED: Correct DaaS Delivery 13 dates
+        endDate: '2025-09-20T00:00:00.000Z'
       };
     }
     
-    // PMP default sprint data
+    // PMP default sprint data  
     return {
       id: sprintId || 'current',
-      name: 'Delivery 4',
-      startDate: '2025-08-25',
-      endDate: '2025-09-05'
+      name: 'Delivery 6',
+      startDate: '2025-09-23T00:00:00.000Z', // Current PMP iteration
+      endDate: '2025-10-04T00:00:00.000Z'
     };
   }
 
@@ -2213,7 +2428,7 @@ class MetricsCalculatorService {
       // Get unique team members from work items
       const allWorkItems = await this.azureService.getWorkItems({
         maxResults: 1000,
-        workItemTypes: ['Task', 'Bug', 'User Story', 'Feature']
+        workItemTypes: ['Task', 'Bug']
       });
 
       if (allWorkItems && allWorkItems.workItems) {
@@ -2268,7 +2483,7 @@ class MetricsCalculatorService {
       // Get work items assigned to team members
       const workItems = await this.azureService.getWorkItems({
         maxResults: 1000,
-        workItemTypes: ['Task', 'Bug', 'User Story', 'Feature'],
+        workItemTypes: ['Task', 'Bug'],
         assignedToUsers: teamMemberEmails
       });
 
@@ -2326,7 +2541,7 @@ class MetricsCalculatorService {
       };
     }
 
-    const completedItems = workItems.filter(wi => wi.state === 'Done' || wi.state === 'Closed');
+    const completedItems = workItems.filter(wi => wi.state === 'Done' || wi.state === 'Closed' || wi.state === 'Deploy');
     const totalStoryPoints = workItems.reduce((sum, wi) => sum + (wi.storyPoints || 0), 0);
     const completedStoryPoints = completedItems.reduce((sum, wi) => sum + (wi.storyPoints || 0), 0);
     
@@ -2376,7 +2591,7 @@ class MetricsCalculatorService {
 
     const bugs = workItems.filter(wi => wi.workItemType === 'Bug');
     const bugsCreated = bugs.length;
-    const bugsResolved = bugs.filter(bug => bug.state === 'Done' || bug.state === 'Closed').length;
+    const bugsResolved = bugs.filter(bug => bug.state === 'Done' || bug.state === 'Closed' || bug.state === 'Deploy').length;
     const totalItems = workItems.length;
     
     // Calculate quality score (fewer bugs relative to total work = higher quality)
@@ -2465,7 +2680,7 @@ class MetricsCalculatorService {
     
     // Group completions by date
     workItems.forEach(item => {
-      if (item.closedDate && (item.state === 'Done' || item.state === 'Closed')) {
+      if (item.closedDate && (item.state === 'Done' || item.state === 'Closed' || item.state === 'Deploy')) {
         const closedDate = new Date(item.closedDate).toISOString().split('T')[0];
         if (!completionsByDate[closedDate]) {
           completionsByDate[closedDate] = 0;
