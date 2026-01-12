@@ -1693,18 +1693,21 @@ class MetricsCalculatorService {
   async calculateVelocityTrend(options = {}) {
     const { period = 'sprint', range = 6, productId } = options;
     const cacheKey = `velocity_trend_${period}_${range}_${productId}`;
-    
+
     const cached = this.getFromCache(cacheKey);
     if (cached) {
       return cached;
     }
 
     try {
-      // 1) Get real iterations from Azure DevOps for the PMP Developer Team specifically
-      // This team has the Delivery sprints (2,3,4,5) that we need
+      // Determine the correct team based on productId
+      const { mapFrontendProjectToTeam } = require('../config/projectMapping');
+      const teamName = mapFrontendProjectToTeam(productId) || "PMP Developer Team";
+
+      // 1) Get real iterations from Azure DevOps for the appropriate team
       const iterations = await this.azureService.iterationResolver.getProjectIterations(
         productId || this.azureService.project,
-        "PMP Developer Team"  // Specify the team that has Delivery sprints
+        teamName
       );
 
       console.log('🔍 [DEBUG] Raw iterations from Azure DevOps:', iterations?.map(i => ({
@@ -1713,27 +1716,40 @@ class MetricsCalculatorService {
         path: i.path
       })));
 
-      // 2) Filter for Delivery sprints specifically (numbers 2, 3, 4, 5)
-      const deliveryIterations = (iterations || [])
+      // 2) Filter for sprints based on project type
+      // - PMP/DaaS: "Delivery" sprints
+      // - OMNIA: "OMS - Sprint" or "Sprint" iterations
+      const isOmniaProject = productId && productId.toLowerCase().includes('omnia');
+
+      const filteredIterations = (iterations || [])
         .filter(iter => {
-          // Filter for iterations with "Delivery" in the path or name
-          const hasDeliveryPath = iter.path && iter.path.includes('Delivery');
-          const hasDeliveryName = iter.name && iter.name.toLowerCase().includes('delivery');
-          return hasDeliveryPath || hasDeliveryName;
+          if (isOmniaProject) {
+            // For OMNIA: match OMS - Sprint or Sprint patterns
+            const hasOmsSprintName = iter.name && (
+              iter.name.toLowerCase().includes('oms') ||
+              iter.name.toLowerCase().includes('sprint')
+            );
+            return hasOmsSprintName;
+          } else {
+            // For PMP/DaaS: match Delivery sprints
+            const hasDeliveryPath = iter.path && iter.path.includes('Delivery');
+            const hasDeliveryName = iter.name && iter.name.toLowerCase().includes('delivery');
+            return hasDeliveryPath || hasDeliveryName;
+          }
         })
         .filter(iter => iter.attributes?.startDate)
         .filter(iter => new Date(iter.attributes.startDate) <= new Date()) // Exclude future sprints
         .sort((a, b) => new Date(b.attributes.startDate) - new Date(a.attributes.startDate));
 
-      console.log('🔍 [DEBUG] Filtered Delivery iterations:', deliveryIterations?.map(i => ({
+      console.log('🔍 [DEBUG] Filtered iterations:', filteredIterations?.map(i => ({
         name: i.name,
         path: i.path,
         startDate: i.attributes?.startDate
       })));
 
-      // 3) Take the last N Delivery sprints (dynamically, regardless of numbers)
-      const targetSprints = deliveryIterations
-        .slice(0, Math.min(range, deliveryIterations.length));
+      // 3) Take the last N sprints (dynamically, regardless of numbers)
+      const targetSprints = filteredIterations
+        .slice(0, Math.min(range, filteredIterations.length));
 
       console.log(`🔍 [DEBUG] Target sprints (last ${range} delivery sprints):`, targetSprints?.map(i => i.name));
 
