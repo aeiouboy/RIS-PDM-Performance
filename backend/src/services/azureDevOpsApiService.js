@@ -22,8 +22,10 @@ class AzureDevOpsApiService {
     this.projectMappings = {
       'Product - Data as a Service': 'Product - Data as a Service',
       'Product - Partner Management Platform': 'Product - Partner Management Platform',
+      'Product - OMNIA': 'Product - OMNIA',
       'daas': 'Product - Data as a Service',
-      'pmp': 'Product - Partner Management Platform'
+      'pmp': 'Product - Partner Management Platform',
+      'omnia': 'Product - OMNIA'
     };
 
     // Azure DevOps REST API configuration - use same config as existing service
