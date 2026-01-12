@@ -1703,12 +1703,39 @@ class MetricsCalculatorService {
       // Determine the correct team based on productId
       const { mapFrontendProjectToTeam } = require('../config/projectMapping');
       const teamName = mapFrontendProjectToTeam(productId) || "PMP Developer Team";
+      const isOmniaProject = productId && productId.toLowerCase().includes('omnia');
 
-      // 1) Get real iterations from Azure DevOps for the appropriate team
-      const iterations = await this.azureService.iterationResolver.getProjectIterations(
-        productId || this.azureService.project,
-        teamName
-      );
+      // 1) Get real iterations - try realApiService first (works for OMNIA), then fallback
+      let iterations = [];
+
+      // Try the real API service first (same as /sprints endpoint)
+      try {
+        console.log(`🔍 [DEBUG] Trying realApiService.getRealSprintData for ${productId}`);
+        const realSprints = await this.realApiService.getRealSprintData(productId);
+        if (realSprints && realSprints.length > 0) {
+          // Convert sprint format to iteration format
+          iterations = realSprints.map(s => ({
+            id: s.azureDevOpsId,
+            name: s.name,
+            path: s.path,
+            attributes: {
+              startDate: s.startDate,
+              finishDate: s.endDate
+            }
+          }));
+          console.log(`✅ Got ${iterations.length} iterations from realApiService`);
+        }
+      } catch (realApiError) {
+        console.log(`⚠️ realApiService failed: ${realApiError.message}, trying iteration resolver`);
+      }
+
+      // Fallback to iteration resolver if realApiService failed
+      if (!iterations || iterations.length === 0) {
+        iterations = await this.azureService.iterationResolver.getProjectIterations(
+          productId || this.azureService.project,
+          teamName
+        );
+      }
 
       console.log('🔍 [DEBUG] Raw iterations from Azure DevOps:', iterations?.map(i => ({
         id: i.id,
@@ -1719,8 +1746,6 @@ class MetricsCalculatorService {
       // 2) Filter for sprints based on project type
       // - PMP/DaaS: "Delivery" sprints
       // - OMNIA: "OMS - Sprint" or "Sprint" iterations
-      const isOmniaProject = productId && productId.toLowerCase().includes('omnia');
-
       const filteredIterations = (iterations || [])
         .filter(iter => {
           if (isOmniaProject) {
