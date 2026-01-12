@@ -33,7 +33,7 @@ export const brandingConfig = {
   }
 };
 
-// ✅ ENABLED PROJECTS ONLY - PMP and DaaS as per backend PROJECT_CONFIG
+// ✅ ENABLED PROJECTS - PMP, DaaS, and OMNIA as per backend PROJECT_CONFIG
 export const projectsConfig = [
   {
     id: 'Product - Partner Management Platform',
@@ -54,6 +54,17 @@ export const projectsConfig = [
     icon: '📊', // Using icon instead of logo
     color: '#0891B2',
     lastUpdate: '4/3/2025',
+    process: 'Align',
+    visibility: 'Private'
+  },
+  {
+    id: 'Product - OMNIA',
+    name: 'Product - OMNIA',
+    abbreviation: 'PO',
+    description: 'OMNIA Order Management System',
+    icon: '🛒', // Shopping cart for OMS
+    color: '#7C3AED',
+    lastUpdate: '1/12/2026',
     process: 'Align',
     visibility: 'Private'
   },
