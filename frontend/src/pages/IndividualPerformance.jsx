@@ -22,6 +22,8 @@ import { useRealtimeMetrics } from '../contexts/WebSocketContext';
 import { projectsConfig } from '../config/branding';
 import ProductSelector from '../components/ProductSelector';
 import SprintFilter from '../components/SprintFilter';
+import ChartTooltip from '../components/ChartTooltip';
+import { HEADINGS } from '../utils/copyGlossary';
 
 const IndividualPerformance = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -38,7 +40,7 @@ const IndividualPerformance = () => {
   const [error, setError] = useState(null);
   // Filter states (matching Dashboard pattern)
   const [selectedProduct, setSelectedProduct] = useState(
-    searchParams.get('product') || searchParams.get('productId') || 'Product - Partner Management Platform'
+    searchParams.get('product') || searchParams.get('productId') || 'Product - Slick Picking Tool'
   );
   const [selectedSprint, setSelectedSprint] = useState(
     searchParams.get('sprint') || searchParams.get('sprintId') || 'current'
@@ -124,7 +126,7 @@ const IndividualPerformance = () => {
         if (sprintName.startsWith('Delivery ')) return sprintName;
         return sprintName;
         
-      } else if (projectName === 'Product - Partner Management Platform') {
+      } else if (projectName === 'Product - Slick Picking Tool') {
         if (sprintName === 'current') return 'current';
         if (sprintName.startsWith('delivery-')) return `${projectName}\\Delivery ${sprintName.replace('delivery-', '')}`;
         return `${projectName}\\${sprintName}`;
@@ -140,7 +142,7 @@ const IndividualPerformance = () => {
   // Helper function to normalize project ID for API calls (from Dashboard)
   const normalizeProjectId = (projectId) => {
     if (projectId === 'Product' || projectId === 'product') {
-      return 'Product - Partner Management Platform';
+      return 'Product - Slick Picking Tool';
     }
     return projectId;
   };
@@ -220,8 +222,8 @@ const IndividualPerformance = () => {
       <>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Individual Task Distribution</h3>
-            <p className="text-sm text-gray-500 mt-1">Personal work item breakdown and analysis</p>
+            <h3 className="text-lg font-semibold text-gray-900">{HEADINGS.workItemBreakdown.title}</h3>
+            <p className="text-sm text-gray-500 mt-1">{HEADINGS.workItemBreakdown.subtitle}</p>
           </div>
           {totalItems > 0 && (
             <div className="text-sm text-gray-600">
@@ -253,30 +255,18 @@ const IndividualPerformance = () => {
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip 
+                  <Tooltip
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
-                        const data = payload[0].payload;
+                        const d = payload[0].payload;
                         return (
-                          <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
-                            <div className="flex items-center space-x-2 mb-2">
-                              <div 
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: payload[0].fill }}
-                              />
-                              <span className="font-semibold text-gray-900">{data.name}</span>
-                            </div>
-                            <div className="space-y-1 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Count:</span>
-                                <span className="font-medium text-gray-900">{data.value} items</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Percentage:</span>
-                                <span className="font-medium text-gray-900">{data.percentage}%</span>
-                              </div>
-                            </div>
-                          </div>
+                          <ChartTooltip
+                            title={d.name}
+                            entries={[
+                              { label: 'Count', value: d.value, unit: 'items' },
+                              { label: 'Percentage', value: `${d.percentage}%` },
+                            ]}
+                          />
                         );
                       }
                       return null;
@@ -322,7 +312,7 @@ const IndividualPerformance = () => {
               {distributionData.length > 3 && (
                 <div className="mt-4 pt-3 border-t border-gray-100">
                   <div className="text-xs text-gray-500 text-center">
-                    Individual Task Analysis
+                    Work Item Breakdown
                   </div>
                 </div>
               )}
@@ -1126,9 +1116,9 @@ const IndividualPerformance = () => {
                         <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                         </svg>
-                        <h3 className="text-sm font-semibold text-gray-900">Velocity Trend Analysis</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">{HEADINGS.velocityTrend.title}</h3>
                       </div>
-                      <p className="text-sm text-gray-600 mt-1">Track individual velocity and delivery predictability over sprints</p>
+                      <p className="text-sm text-gray-600 mt-1">{HEADINGS.velocityTrend.subtitle}</p>
                     </div>
                     <div className="p-6">
 
@@ -1187,29 +1177,18 @@ const IndividualPerformance = () => {
                                 tickLine={{ stroke: '#e5e7eb' }}
                                 label={{ value: 'Story Points', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: '#6b7280' } }}
                               />
-                              <Tooltip 
+                              <Tooltip
                                 content={({ active, payload, label }) => {
                                   if (active && payload && payload.length) {
                                     return (
-                                      <div className="bg-white p-4 border border-gray-300 rounded-lg shadow-lg">
-                                        <p className="font-medium text-gray-900 mb-2">{label}</p>
-                                        <div className="space-y-1">
-                                          {payload.map((entry, index) => (
-                                            <div key={index} className="flex items-center justify-between space-x-4">
-                                              <div className="flex items-center space-x-2">
-                                                <div 
-                                                  className="w-3 h-3 rounded-full"
-                                                  style={{ backgroundColor: entry.color }}
-                                                />
-                                                <span className="text-sm text-gray-600 capitalize">{entry.dataKey}:</span>
-                                              </div>
-                                              <span className="text-sm font-medium text-gray-900">
-                                                {entry.value} pts
-                                              </span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
+                                      <ChartTooltip
+                                        title={label}
+                                        entries={payload.map((entry) => ({
+                                          label: entry.dataKey.charAt(0).toUpperCase() + entry.dataKey.slice(1),
+                                          value: entry.value,
+                                          unit: 'pts',
+                                        }))}
+                                      />
                                     );
                                   }
                                   return null;
@@ -1255,9 +1234,9 @@ const IndividualPerformance = () => {
                         <div className="mt-4 pt-4 border-t border-gray-200">
                           <div className="text-sm text-gray-600">
                             <span className="font-medium">Performance: </span>
-                            {trend >= 10 && <span className="text-green-600">🚀 Strong improvement in personal velocity.</span>}
-                            {trend < -10 && <span className="text-red-600">📉 Declining velocity may need attention.</span>}
-                            {Math.abs(trend) < 10 && <span className="text-blue-600">📊 Consistent personal performance.</span>}
+                            {trend >= 10 && <span className="text-green-600">Strong improvement in personal velocity.</span>}
+                            {trend < -10 && <span className="text-red-600">Declining velocity may need attention.</span>}
+                            {Math.abs(trend) < 10 && <span className="text-blue-600">Consistent personal performance.</span>}
                           </div>
                         </div>
                       </>
@@ -1272,7 +1251,7 @@ const IndividualPerformance = () => {
                         <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2V7a2 2 0 012-2h2a2 2 0 002 2v2a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 00-2 2h-2a2 2 0 00-2 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2z" />
                         </svg>
-                        <h3 className="text-sm font-semibold text-gray-900">Task Distribution</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">{HEADINGS.workItemBreakdown.title}</h3>
                       </div>
                     </div>
                     <div className="p-6">
@@ -1536,7 +1515,7 @@ const IndividualPerformance = () => {
             </h3>
             <p id="empty-state-description" className="text-lg text-gray-700 leading-relaxed mb-6">
               Choose a team member from the selection above to view their comprehensive performance analytics,
-              including velocity trends, task distribution, and detailed work item analysis.
+              including velocity trend, work item breakdown, and detailed work item analysis.
             </p>
 
             {/* Feature Highlights */}
@@ -1547,7 +1526,7 @@ const IndividualPerformance = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                   </svg>
                 </div>
-                <h4 className="font-semibold text-gray-900 mb-1">Velocity Trends</h4>
+                <h4 className="font-semibold text-gray-900 mb-1">Velocity Trend</h4>
                 <p className="text-sm text-gray-600 text-center">Track performance over time</p>
               </div>
 
@@ -1557,7 +1536,7 @@ const IndividualPerformance = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2V7a2 2 0 012-2h2a2 2 0 002 2v2a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 00-2 2h-2a2 2 0 00-2 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2z" />
                   </svg>
                 </div>
-                <h4 className="font-semibold text-gray-900 mb-1">Task Distribution</h4>
+                <h4 className="font-semibold text-gray-900 mb-1">Work Item Breakdown</h4>
                 <p className="text-sm text-gray-600 text-center">Analyze work item patterns</p>
               </div>
 

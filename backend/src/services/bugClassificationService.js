@@ -290,20 +290,26 @@ class BugClassificationService {
    * Classify bug type based on Azure DevOps custom field
    */
   classifyBugType(bug) {
-    // Check for Azure DevOps custom field "Bug types" or similar field
-    const bugTypeField = bug.customFields?.bugTypes || 
-                        bug.fields?.['Custom.BugTypes'] || 
+    // Azure DevOps custom field at Central is `Custom.Bugtypes` (no space, lowercase t).
+    // Earlier code only checked `Custom.BugTypes` / `Bug types` variants — Slick/PMP bugs
+    // were silently classified as "Unclassified" because the field name didn't match.
+    const bugTypeField = bug.customFields?.bugTypes ||
+                        bug.customFields?.Bugtypes ||
+                        bug.fields?.['Custom.Bugtypes'] ||
+                        bug.fields?.['Custom.BugTypes'] ||
                         bug.fields?.['Microsoft.VSTS.Common.BugType'] ||
                         bug.fields?.['System.Tags'] ||
                         bug.fields?.['Bug types'] ||
                         bug.bugTypes ||
-                        bug.bugType || 
+                        bug.bugType ||
                         bug.type;
 
     // Also check common Azure DevOps field patterns
     const allPossibleFields = [
       bug.customFields?.['Bug types'],
       bug.customFields?.bugTypes,
+      bug.customFields?.Bugtypes,
+      bug.fields?.['Custom.Bugtypes'],
       bug.fields?.['Custom.Bug types'],
       bug.fields?.['Custom.BugTypes'],
       bug.fields?.['Microsoft.VSTS.Common.BugType'],

@@ -323,7 +323,10 @@ class MetricsCalculatorService {
     
     let queryOptions = {
       projectName: azureProjectName, // Use mapped Azure project instead of frontend project
-      maxResults: 1000
+      maxResults: 1000,
+      // Fetch all work item types so downstream _filterByWorkItemTypes can filter correctly.
+      // Without this, getWorkItems defaults to ['Task','Bug'] and PBIs are never fetched.
+      workItemTypes: ['Product Backlog Item', 'Task', 'Bug', 'Feature', 'User Story', 'Epic'],
     };
 
     // Resolve iteration path properly instead of passing raw sprintId
@@ -1530,8 +1533,15 @@ class MetricsCalculatorService {
    * @returns {Promise<object>} Detailed KPI data
    */
   async calculateDetailedKPIs(options = {}) {
-    const { period = 'sprint', productId, sprintId } = options;
-    const cacheKey = `detailed_kpis_${period}_${productId}_${sprintId}`;
+    const {
+      period = 'sprint',
+      productId,
+      sprintId,
+      workItemTypes = 'Product Backlog Item',
+      resolvedAsCompleted = true,
+      aggregation = 'storyPoints',
+    } = options;
+    const cacheKey = `detailed_kpis_${period}_${productId}_${sprintId}_${workItemTypes}_${resolvedAsCompleted}_${aggregation}`;
     
     const cached = this.getFromCache(cacheKey);
     if (cached) {
@@ -1557,17 +1567,25 @@ class MetricsCalculatorService {
         }
       }
       
+      // A1: Filter by work item type (default: PBI only, 'all' = no filter)
+      const filteredItems = this._filterByWorkItemTypes(workItems, workItemTypes);
+
+      // A2: Build completed-states set based on resolvedAsCompleted flag
+      const completedStates = this._getCompletedStates(resolvedAsCompleted);
+
       // Calculate P/L metrics (mock implementation)
-      const pl = await this.calculatePLMetrics(workItems, productId);
-      
+      const pl = await this.calculatePLMetrics(filteredItems, productId);
+
       // Calculate velocity metrics (completed story points)
-      const velocity = calculateVelocity(workItems);
-      
-      // Calculate total committed story points for the sprint (all work items regardless of state)
-      const totalCommittedStoryPoints = workItems.reduce((sum, item) => sum + (item.storyPoints || 0), 0);
-      
+      const velocity = calculateVelocity(filteredItems);
+
+      // A3: Aggregate committed value (storyPoints or count)
+      const totalCommittedStoryPoints = aggregation === 'count'
+        ? filteredItems.length
+        : filteredItems.reduce((sum, item) => sum + (item.storyPoints || 0), 0);
+
       // Calculate bug metrics
-      const bugs = this.calculateBugMetrics(workItems);
+      const bugs = this.calculateBugMetrics(workItems); // bugs always use full set
       
       // Calculate satisfaction metrics (mock implementation)
       const satisfaction = await this.calculateSatisfactionMetrics(workItems);
@@ -1628,8 +1646,14 @@ class MetricsCalculatorService {
    * @returns {Promise<Array>} Burndown data points
    */
   async calculateSprintBurndown(options = {}) {
-    const { sprintId, productId } = options;
-    const cacheKey = `sprint_burndown_${sprintId}_${productId}`;
+    const {
+      sprintId,
+      productId,
+      workItemTypes = 'Product Backlog Item',
+      resolvedAsCompleted = true,
+      aggregation = 'storyPoints',
+    } = options;
+    const cacheKey = `sprint_burndown_${sprintId}_${productId}_${workItemTypes}_${resolvedAsCompleted}_${aggregation}`;
     
     const cached = this.getFromCache(cacheKey);
     if (cached) {
@@ -1674,11 +1698,15 @@ class MetricsCalculatorService {
         }
       }
       
-      const burndownData = this.generateBurndownChart(workItems, sprintData, sprintDuration);
+      // A1: Filter by work item type
+      const filteredItems = this._filterByWorkItemTypes(workItems, workItemTypes);
+
+      // A2/A3: Pass resolvedAsCompleted and aggregation to chart generator
+      const burndownData = this.generateBurndownChart(filteredItems, sprintData, sprintDuration, { resolvedAsCompleted, aggregation });
 
       this.setCache(cacheKey, burndownData);
       return burndownData;
-      
+
     } catch (error) {
       console.error('Error calculating sprint burndown:', error);
       throw new Error(`Failed to calculate burndown: ${error.message}`);
@@ -1691,8 +1719,15 @@ class MetricsCalculatorService {
    * @returns {Promise<Array>} Velocity trend data
    */
   async calculateVelocityTrend(options = {}) {
-    const { period = 'sprint', range = 6, productId } = options;
-    const cacheKey = `velocity_trend_${period}_${range}_${productId}`;
+    const {
+      period = 'sprint',
+      range = 6,
+      productId,
+      workItemTypes = 'Product Backlog Item',
+      resolvedAsCompleted = false,
+      aggregation = 'count',
+    } = options;
+    const cacheKey = `velocity_trend_${period}_${range}_${productId}_${workItemTypes}_${resolvedAsCompleted}_${aggregation}`;
 
     const cached = this.getFromCache(cacheKey);
     if (cached) {
@@ -1704,6 +1739,9 @@ class MetricsCalculatorService {
       const { mapFrontendProjectToTeam } = require('../config/projectMapping');
       const teamName = mapFrontendProjectToTeam(productId) || "PMP Developer Team";
       const isOmniaProject = productId && productId.toLowerCase().includes('omnia');
+      const isSlickProject = productId && productId.toLowerCase().includes('slick');
+      // Projects that use "Sprint*" iteration names (vs. PMP/DaaS "Delivery N")
+      const usesSprintPattern = isOmniaProject || isSlickProject;
 
       // 1) Get real iterations - try realApiService first (works for OMNIA), then fallback
       let iterations = [];
@@ -1748,8 +1786,8 @@ class MetricsCalculatorService {
       // - OMNIA: "OMS - Sprint" or "Sprint" iterations
       const filteredIterations = (iterations || [])
         .filter(iter => {
-          if (isOmniaProject) {
-            // For OMNIA: match OMS - Sprint or Sprint patterns
+          if (usesSprintPattern) {
+            // For OMNIA & Slick: match "OMS - Sprint N" or "Sprint YYYY-N" patterns
             const hasOmsSprintName = iter.name && (
               iter.name.toLowerCase().includes('oms') ||
               iter.name.toLowerCase().includes('sprint')
@@ -1780,17 +1818,38 @@ class MetricsCalculatorService {
 
       const velocityTrend = [];
 
+      const completedStatesForTrend = this._getCompletedStates(resolvedAsCompleted);
+
       for (const iter of targetSprints) {
         const sprintName = iter.name;
         // 4) Fetch work items for each sprint and compute real commitment/velocity
-        const workItems = await this.getWorkItemsForProduct(productId, { sprintId: sprintName });
+        const rawItems = await this.getWorkItemsForProduct(productId, { sprintId: sprintName });
 
-        const commitmentStoryPoints = workItems.reduce((sum, wi) => sum + (wi.storyPoints || 0), 0);
-        const v = calculateVelocity(workItems, iter.attributes?.startDate, iter.attributes?.finishDate);
+        // A1: Filter by work item type
+        const workItems = this._filterByWorkItemTypes(rawItems, workItemTypes);
 
-        // Extract sprint number if present
-        const match = sprintName.match(/(\d+)/);
-        const sprintNumber = match ? parseInt(match[1]) : 0;
+        // A3: Compute commitment and velocity based on aggregation param
+        const completedItems = workItems.filter(wi => completedStatesForTrend.includes(wi.state));
+        const commitmentStoryPoints = aggregation === 'count'
+          ? workItems.length
+          : workItems.reduce((sum, wi) => sum + (wi.storyPoints || 0), 0);
+        const velocityValue = aggregation === 'count'
+          ? completedItems.length
+          : completedItems.reduce((sum, wi) => sum + (wi.storyPoints || 0), 0);
+        const v = { storyPoints: velocityValue, averageStoryPointsPerTask: completedItems.length > 0 ? velocityValue / completedItems.length : 0 };
+
+        // Extract sprint number for chronological sorting.
+        // Priority: "Sprint YYYY-N" (Slick) → year*100+N, trailing digit group, first digit group.
+        let sprintNumber = 0;
+        const yearNMatch = sprintName.match(/Sprint\s+(\d{4})-(\d+)/i);
+        if (yearNMatch) {
+          sprintNumber = parseInt(yearNMatch[1]) * 100 + parseInt(yearNMatch[2]);
+        } else {
+          const trailingMatch = sprintName.match(/(\d+)$/);
+          const firstMatch = sprintName.match(/(\d+)/);
+          const fallback = trailingMatch || firstMatch;
+          sprintNumber = fallback ? parseInt(fallback[1]) : 0;
+        }
 
         velocityTrend.push({
           sprint: sprintName,
@@ -1897,8 +1956,8 @@ class MetricsCalculatorService {
     
     return {
       total: totalBugs, // ✅ UPDATED - showing total bugs (all bugs regardless of status)
-      trend: -8,
-      trendValue: '-8%',
+      trend: 0,
+      trendValue: '0%',
       resolved: bugs.length - openBugs.length,
       breakdown: {
         total: bugs.length,
@@ -1921,16 +1980,21 @@ class MetricsCalculatorService {
     };
   }
 
-  generateBurndownChart(workItems, sprintData, sprintDuration) {
-    // 🎯 FIXED: Check if project uses story points or work item count
-    // Only consider it has story points if there are actual positive values
+  generateBurndownChart(workItems, sprintData, sprintDuration, chartOptions = {}) {
+    const { resolvedAsCompleted = true, aggregation = 'storyPoints' } = chartOptions;
+
+    // A3: Respect aggregation param; fall back to work-item count when no SPs exist
     const totalStoryPoints = workItems.reduce((sum, item) => sum + (item.storyPoints || 0), 0);
     const hasStoryPoints = totalStoryPoints > 0;
 
     let totalWork;
     let workUnit;
 
-    if (hasStoryPoints) {
+    if (aggregation === 'count') {
+      totalWork = workItems.length;
+      workUnit = 'work items';
+      console.log(`🔥 BURNDOWN CHART: aggregation=count - Total: ${totalWork} ${workUnit}`);
+    } else if (hasStoryPoints) {
       // Use story points if available
       totalWork = workItems.reduce((sum, item) => {
         const storyPoints = item.storyPoints || 0;
@@ -1944,6 +2008,9 @@ class MetricsCalculatorService {
       workUnit = 'work items';
       console.log(`🔥 BURNDOWN CHART: Using WORK ITEM COUNT - Total: ${totalWork} ${workUnit}`);
     }
+
+    // Store resolvedAsCompleted for use in getCompletedWorkByDay
+    this._currentResolvedAsCompleted = resolvedAsCompleted;
     
     const burndownData = [];
     
@@ -1951,7 +2018,9 @@ class MetricsCalculatorService {
       const idealRemaining = totalWork - (totalWork * day / sprintDuration);
       
       // Calculate actual remaining based on completed work
-      const completedByDay = this.getCompletedWorkByDay(workItems, day, sprintData.startDate);
+      // Pass real sprintDuration so getCompletedWorkByDay can scope sprintEnd correctly
+      // (without this, hardcoded 14-day sprint caused items closed at/after the real sprint end to be silently skipped → flat actual line).
+      const completedByDay = this.getCompletedWorkByDay(workItems, day, sprintData.startDate, sprintDuration);
       const actualRemaining = Math.max(0, totalWork - completedByDay);
       
       console.log(`🔥 BURNDOWN CHART [Day ${day}]: ideal=${idealRemaining.toFixed(1)}, completed=${completedByDay}, actual=${actualRemaining.toFixed(1)} ${workUnit}`);
@@ -2081,9 +2150,11 @@ class MetricsCalculatorService {
     return result;
   }
 
-  getCompletedWorkByDay(workItems, day, sprintStart) {
+  getCompletedWorkByDay(workItems, day, sprintStart, sprintDuration = 14) {
     const targetDate = this.addDays(sprintStart, day);
-    const sprintEnd = this.addDays(sprintStart, 14); // Assume 14-day sprint
+    // Use actual sprint duration so items closed at/after sprint end are accounted for.
+    // Previously hardcoded to 14 days, which silently dropped completions in shorter sprints (e.g., Slick 11-day sprints).
+    const sprintEnd = this.addDays(sprintStart, sprintDuration);
 
     // 🔍 DEBUG: Log work items for DaaS Delivery 13 burndown calculation
     if (workItems.length > 0) {
@@ -2128,8 +2199,13 @@ class MetricsCalculatorService {
       console.log(`🔥 Story points distribution:`, storyPointsDistribution);
     }
 
+    // A2: Build completed states set from resolvedAsCompleted flag set by generateBurndownChart
+    const completedStatesForBurndown = this._getCompletedStates(
+      this._currentResolvedAsCompleted !== undefined ? this._currentResolvedAsCompleted : true
+    );
+
     const totalCompletedItems = workItems.filter(item =>
-      ['Closed', 'Completed', 'Done', 'Resolved', 'Deploy'].includes(item.state)
+      completedStatesForBurndown.includes(item.state)
     );
 
     // 🔥 DEBUG: Check if we have any completed items
@@ -2140,8 +2216,8 @@ class MetricsCalculatorService {
     console.log(`🔥 BURNDOWN DEBUG [Day ${day}]: Completed items have ${completedStoryPoints} total story points`);
 
     const completedItems = workItems.filter(item => {
-      // Check if work item is completed by state (primary method)
-      const isCompletedByState = ['Closed', 'Completed', 'Done', 'Resolved', 'Deploy'].includes(item.state);
+      // A2: Use dynamic completed states (respects resolvedAsCompleted flag)
+      const isCompletedByState = completedStatesForBurndown.includes(item.state);
 
       // If not completed by state, skip it
       if (!isCompletedByState) {
@@ -2282,15 +2358,22 @@ class MetricsCalculatorService {
         let targetIteration = null;
         
         if (sprintId && sprintId !== 'current') {
-          // Find specific iteration by name or ID
-          targetIteration = iterations.find(iter => 
-            iter.name === sprintId || 
-            iter.id === sprintId || 
+          // Normalize "sprint-YYYY-N" / "sprint-N" → "Sprint YYYY-N" / "Sprint N" for matching.
+          // Frontend sends lowercased dash-form (e.g., "sprint-2026-9") while Azure stores "Sprint 2026-9".
+          const normalize = (s) => String(s || '').toLowerCase()
+            .replace(/[-_]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const wanted = normalize(sprintId);
+          targetIteration = iterations.find(iter =>
+            iter.name === sprintId ||
+            iter.id === sprintId ||
             iter.path.includes(sprintId) ||
-            iter.name.toLowerCase().includes(sprintId.toLowerCase())
+            normalize(iter.name) === wanted ||
+            normalize(iter.path).endsWith(wanted)
           );
         } else {
-          // Find current iteration by date
+          // Find current iteration by date (priority 1: active)
           const now = new Date();
           targetIteration = iterations.find(iter => {
             if (!iter.attributes?.startDate || !iter.attributes?.finishDate) return false;
@@ -2298,8 +2381,20 @@ class MetricsCalculatorService {
             const endDate = new Date(iter.attributes.finishDate);
             return startDate <= now && endDate >= now;
           });
-          
-          // If no current found, get most recent completed iteration
+
+          // Priority 2: next-planned sprint (soonest upcoming).
+          // Matches SprintFilter UI's `sprintList[0]` fallback and the
+          // findCurrentIterationForProject resolver in projectMapping.js.
+          // Without this, burndown's date axis comes from the last-completed
+          // sprint while KPIs/velocity come from the upcoming sprint → mismatch.
+          if (!targetIteration) {
+            const upcomingIterations = iterations
+              .filter(iter => iter.attributes?.startDate && new Date(iter.attributes.startDate) > now)
+              .sort((a, b) => new Date(a.attributes.startDate) - new Date(b.attributes.startDate));
+            targetIteration = upcomingIterations[0];
+          }
+
+          // Priority 3: most recently completed iteration (last resort)
           if (!targetIteration) {
             const completedIterations = iterations
               .filter(iter => iter.attributes?.finishDate && new Date(iter.attributes.finishDate) < now)
@@ -2780,6 +2875,161 @@ class MetricsCalculatorService {
     }
     
     return workingDays;
+  }
+
+  // ── A1/A2 helpers ────────────────────────────────────────────────────────────
+
+  /**
+   * Filter work items by type.
+   * @param {Array} workItems
+   * @param {string} workItemTypes  CSV of types, or 'all' to skip filtering.
+   *                                Default 'Product Backlog Item'.
+   */
+  _filterByWorkItemTypes(workItems, workItemTypes = 'Product Backlog Item') {
+    if (!workItemTypes || workItemTypes.toLowerCase() === 'all') {
+      return workItems;
+    }
+    const types = workItemTypes.split(',').map(t => t.trim().toLowerCase());
+    // "Product Backlog Item" (CMMI template) and "User Story" (Scrum/Agile template) are
+    // both the top-level backlog requirement type — treat them as aliases so the default
+    // PBI filter works across all Azure DevOps process templates.
+    const PBI_ALIASES = new Set(['product backlog item', 'user story']);
+    const hasPbiAlias = types.some(t => PBI_ALIASES.has(t));
+    return workItems.filter(wi => {
+      const t = (wi.workItemType || wi.type || '').toLowerCase();
+      if (hasPbiAlias && PBI_ALIASES.has(t)) return true;
+      return types.includes(t);
+    });
+  }
+
+  /**
+   * Return the set of states that count as "completed" based on the flag.
+   * @param {boolean} resolvedAsCompleted
+   */
+  _getCompletedStates(resolvedAsCompleted) {
+    const base = ['Done', 'Closed', 'Completed'];
+    return resolvedAsCompleted ? [...base, 'Resolved', 'Deploy'] : base;
+  }
+
+  // ── A4: Sprint-by-Assignee pivot ─────────────────────────────────────────────
+
+  /**
+   * Calculate 2-D pivot: assignee × state with sum of story points.
+   * Mirrors Azure "Current Sprint by Assigned To" widget.
+   */
+  async calculateSprintByAssignee(options = {}) {
+    const { productId, sprintId = 'current' } = options;
+    const cacheKey = `sprint_by_assignee_${productId}_${sprintId}`;
+
+    const cached = this.getFromCache(cacheKey);
+    if (cached) return cached;
+
+    try {
+      // Fetch sprint metadata
+      const sprintData = await this.getSprintData(sprintId, productId);
+
+      // Fetch PBI work items for the sprint
+      let allItems = await this.getWorkItemsForProduct(productId, { sprintId });
+      if (!allItems || allItems.length === 0) {
+        try {
+          allItems = await this.realApiService.getRealWorkItems(productId, sprintId);
+        } catch (e) {
+          allItems = [];
+        }
+      }
+
+      // Filter to PBIs only (Azure RequirementCategory)
+      const pbis = this._filterByWorkItemTypes(allItems, 'Product Backlog Item');
+
+      // Group by assignee
+      const assigneeMap = {};
+      for (const item of pbis) {
+        const name = item.assignee || item.assignedTo || 'Unassigned';
+        const email = item.assigneeEmail || item.email || '';
+        const key = email || name;
+        if (!assigneeMap[key]) {
+          assigneeMap[key] = { name, email, states: {}, totalSP: 0, totalItems: 0 };
+        }
+        const state = item.state || 'Unknown';
+        assigneeMap[key].states[state] = (assigneeMap[key].states[state] || 0) + (item.storyPoints || 0);
+        assigneeMap[key].totalSP += item.storyPoints || 0;
+        assigneeMap[key].totalItems += 1;
+      }
+
+      const result = {
+        sprint: sprintData?.name || sprintId,
+        assignees: Object.values(assigneeMap).sort((a, b) => b.totalSP - a.totalSP),
+      };
+
+      this.setCache(cacheKey, result);
+      return result;
+    } catch (error) {
+      console.error('Error calculating sprint-by-assignee:', error);
+      throw new Error(`Failed to calculate sprint-by-assignee: ${error.message}`);
+    }
+  }
+
+  // ── A5: Sprint Overview scalar ───────────────────────────────────────────────
+
+  /**
+   * Calculate scalar sprint overview metrics.
+   * Mirrors Azure "Sprint Overview" widget.
+   */
+  async calculateSprintOverview(options = {}) {
+    const { productId, sprintId = 'current', units = 'workItems' } = options;
+    const cacheKey = `sprint_overview_${productId}_${sprintId}`;
+
+    const cached = this.getFromCache(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const sprintData = await this.getSprintData(sprintId, productId);
+
+      let allItems = await this.getWorkItemsForProduct(productId, { sprintId });
+      if (!allItems || allItems.length === 0) {
+        try {
+          allItems = await this.realApiService.getRealWorkItems(productId, sprintId);
+        } catch (e) {
+          allItems = [];
+        }
+      }
+
+      // Filter to PBIs only
+      const pbis = this._filterByWorkItemTypes(allItems, 'Product Backlog Item');
+
+      const completedStates = this._getCompletedStates(true); // use broadest set for overview
+      const completedPBIs = pbis.filter(wi => completedStates.includes(wi.state));
+
+      const totalSP = pbis.reduce((s, wi) => s + (wi.storyPoints || 0), 0);
+      const completedSP = completedPBIs.reduce((s, wi) => s + (wi.storyPoints || 0), 0);
+
+      const now = new Date();
+      const startDate = sprintData?.startDate ? new Date(sprintData.startDate) : null;
+      const endDate = sprintData?.endDate ? new Date(sprintData.endDate) : null;
+      const totalDays = startDate && endDate
+        ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+        : null;
+      const daysElapsed = startDate ? Math.max(0, Math.min(totalDays || 0, Math.floor((now - startDate) / (1000 * 60 * 60 * 24)))) : null;
+      const daysRemaining = endDate ? Math.max(0, Math.ceil((endDate - now) / (1000 * 60 * 60 * 24))) : null;
+
+      const result = {
+        sprint: sprintData?.name || sprintId,
+        startDate: sprintData?.startDate ? new Date(sprintData.startDate).toISOString().split('T')[0] : null,
+        endDate: sprintData?.endDate ? new Date(sprintData.endDate).toISOString().split('T')[0] : null,
+        daysRemaining,
+        daysElapsed,
+        totalItems: pbis.length,
+        completedItems: completedPBIs.length,
+        totalSP,
+        completedSP,
+      };
+
+      this.setCache(cacheKey, result);
+      return result;
+    } catch (error) {
+      console.error('Error calculating sprint overview:', error);
+      throw new Error(`Failed to calculate sprint overview: ${error.message}`);
+    }
   }
 }
 

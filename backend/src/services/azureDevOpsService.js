@@ -752,7 +752,8 @@ class AzureDevOpsService {
       'Bug types', // Direct field name - title case
       'Bug Types', // Direct field name - title case
       'Custom.BugType',
-      'Custom.BugTypes', 
+      'Custom.BugTypes',
+      'Custom.Bugtypes', // Central group's actual field name (lowercase t)
       'Custom.bug types',
       'Microsoft.VSTS.Common.BugType',
       'System.BugType',
@@ -835,6 +836,14 @@ class AzureDevOpsService {
             value = effort; // Agile process uses Effort as story points equivalent
           } else if (originalEstimate !== undefined && originalEstimate !== null) {
             value = originalEstimate; // Fallback to estimate units if present
+          }
+        }
+        // 5) Slick-specific default: team doesn't fill story points, so default to 3 per item
+        //    so burndown/velocity are non-zero. Applies only when all fields above are missing.
+        if (value === undefined || value === null) {
+          const project = fields['System.TeamProject'] || fields['System.AreaLevel1'];
+          if (project === 'Product - Slick Picking Tool') {
+            value = 3;
           }
         }
         return Number(value) || 0;
@@ -2054,8 +2063,8 @@ class AzureDevOpsService {
     // Find the bug types field
     let bugTypeField = null;
     const possibleFields = [
-      'Bug types', 'bug types', 'Bug Types', 
-      'Custom.BugType', 'Custom.BugTypes', 'Custom.bug types'
+      'Bug types', 'bug types', 'Bug Types',
+      'Custom.BugType', 'Custom.BugTypes', 'Custom.Bugtypes', 'Custom.bug types'
     ];
 
     for (const bug of bugs) {
@@ -2291,9 +2300,12 @@ class AzureDevOpsService {
       return null;
     }
 
-    const bugTypeValue = bugItem.bugType || 
-                        bugItem.customFields?.['Bug types'] || 
+    const bugTypeValue = bugItem.bugType ||
+                        bugItem.customFields?.bugTypes ||
+                        bugItem.customFields?.['Bug types'] ||
                         bugItem.customFields?.['bug types'] ||
+                        bugItem.fields?.['Custom.Bugtypes'] ||
+                        bugItem.fields?.['Custom.BugTypes'] ||
                         bugItem.fields?.['Bug types'] ||
                         null;
 
@@ -2314,9 +2326,12 @@ class AzureDevOpsService {
       return null;
     }
 
-    const bugTypeValue = bugItem.bugType || 
-                        bugItem.customFields?.['Bug types'] || 
+    const bugTypeValue = bugItem.bugType ||
+                        bugItem.customFields?.bugTypes ||
+                        bugItem.customFields?.['Bug types'] ||
                         bugItem.customFields?.['bug types'] ||
+                        bugItem.fields?.['Custom.Bugtypes'] ||
+                        bugItem.fields?.['Custom.BugTypes'] ||
                         bugItem.fields?.['Bug types'] ||
                         null;
 
@@ -2330,11 +2345,11 @@ class AzureDevOpsService {
    */
   extractEnvironmentFromBugType(bugTypeValue) {
     if (!bugTypeValue || typeof bugTypeValue !== 'string') {
-      return null;
+      return 'Unclassified';
     }
 
     const normalized = bugTypeValue.toLowerCase();
-    
+
     if (normalized.includes('deploy')) {
       return 'Deploy';
     } else if (normalized.includes('prod')) {
@@ -2344,7 +2359,7 @@ class AzureDevOpsService {
     } else if (normalized.includes('uat')) {
       return 'UAT';
     }
-    
+
     return 'Other';
   }
 

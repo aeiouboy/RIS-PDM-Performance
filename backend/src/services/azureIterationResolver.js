@@ -49,6 +49,11 @@ class AzureIterationResolver {
         patterns: ['Delivery {n}', 'Sprint {n}'],
         // Allow optional suffixes after the number
         regex: /^(Delivery|Sprint)\s+(\d+)(\b|\s|\W|$)/i
+      },
+      'Product - Slick Picking Tool': {
+        patterns: ['Sprint {YYYY}-{n}', 'Sprint {n}'],
+        // Match new "Sprint 2026-11" and legacy "Sprint 47" formats
+        regex: /^Sprint\s+(?:\d{4}-)?(\d+)(\b|\s|\W|$)/i
       }
     };
   }
@@ -316,16 +321,24 @@ class AzureIterationResolver {
       return match.path;
     }
 
-    // Extract number from pattern
+    // Extract number(s) from pattern — support both "sprint-2026-11" (YYYY-N) and "sprint-18" (N)
+    const yearNMatch = pattern.match(/(\d{4})-(\d+)/i);
     const numberMatch = pattern.match(/(\d+)/i);
     if (numberMatch) {
       const number = parseInt(numberMatch[1]);
-      
+      const year = yearNMatch ? yearNMatch[1] : null;
+      const sprintNum = yearNMatch ? yearNMatch[2] : null;
+
       // Try project-specific patterns first
       if (project && this.projectPatterns[project]) {
         const projectConfig = this.projectPatterns[project];
         for (const template of projectConfig.patterns) {
-          const testName = template.replace('{n}', number).replace('{n:02d}', number.toString().padStart(2, '0'));
+          let testName;
+          if (template.includes('{YYYY}') && year && sprintNum) {
+            testName = template.replace('{YYYY}', year).replace('{n}', sprintNum);
+          } else {
+            testName = template.replace('{n}', number).replace('{n:02d}', number.toString().padStart(2, '0'));
+          }
           const testLower = testName.toLowerCase();
           // Allow names that start with the pattern (e.g., "Delivery 12 – DaaS")
           match = iterations.find(iter => {

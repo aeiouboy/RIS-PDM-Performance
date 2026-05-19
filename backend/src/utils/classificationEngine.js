@@ -145,15 +145,22 @@ class ClassificationEngine {
   extractCustomFieldValue(workItem, fieldName) {
     if (!workItem) return null;
 
-    // Try different possible field locations
+    // Try different possible field locations.
+    // Azure DevOps custom-field name in Central group is `Custom.Bugtypes` (no space, lowercase t).
+    // Older code looked for "Bug types" / "Bug Types" only — Slick/PMP bugs were silently dropped.
     const possibleLocations = [
       workItem.customFields?.[fieldName],
       workItem.customFields?.['bug types'],
       workItem.customFields?.['Bug Types'],
+      workItem.customFields?.['Bugtypes'],
+      workItem.customFields?.['bugtypes'],
       workItem.bugType,
       workItem.fields?.[fieldName],
       workItem.fields?.['Bug types'],
-      workItem.fields?.['Bug Types']
+      workItem.fields?.['Bug Types'],
+      workItem.fields?.['Custom.Bugtypes'],
+      workItem.fields?.['Custom.BugTypes'],
+      workItem.fields?.['Custom.bugtypes']
     ];
 
     for (const value of possibleLocations) {
@@ -487,11 +494,19 @@ class ClassificationEngine {
    */
   inferEnvironmentFromContent(bugItem) {
     const content = `${bugItem.title || ''} ${bugItem.description || ''}`.toLowerCase();
-    
+
+    // Map pattern keys to canonical environment names used in environmentBreakdown
+    const envNameMap = {
+      deploy: 'Deploy',
+      prod: 'Prod',
+      sit: 'SIT',
+      uat: 'UAT'
+    };
+
     for (const [env, pattern] of Object.entries(this.patterns.environments)) {
       if (pattern.test(content)) {
         return {
-          environment: env.charAt(0).toUpperCase() + env.slice(1),
+          environment: envNameMap[env] || (env.charAt(0).toUpperCase() + env.slice(1)),
           confidence: 65,
           reasoning: `Matched ${env} pattern in content`
         };

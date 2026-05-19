@@ -1,5 +1,6 @@
 import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import ChartTooltip from './ChartTooltip';
 
 const TaskDistributionChart = ({ 
   data = [], 
@@ -23,87 +24,21 @@ const TaskDistributionChart = ({
   ];
 
 
-  // Debug logging
-  console.log('TaskDistributionChart data received:', { data, loading, dataLength: data?.length });
-  
   // Only use real data - don't fall back to sample data
   const chartData = data.length > 0 ? data : [];
   const isUsingSampleData = data.length === 0;
   const totalTasks = chartData.length > 0 ? chartData.reduce((sum, item) => sum + (item.count || item.value), 0) : 0;
 
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload }) => {
+  // Shared tooltip
+  const PieTooltip = ({ active, payload }) => {
     if (active && payload && payload.length > 0) {
       const data = payload[0].payload;
-      return (
-        <div className="bg-white p-4 border border-gray-300 rounded-lg shadow-lg max-w-xs">
-          <div className="flex items-center space-x-2 mb-3">
-            <div 
-              className="w-4 h-4 rounded-full flex-shrink-0"
-              style={{ backgroundColor: payload[0].color }}
-            />
-            <span className="font-medium text-gray-900">{data.name}</span>
-            {data.icon && <span className="text-lg">{data.icon}</span>}
-          </div>
-          
-          {data.description && (
-            <p className="text-xs text-gray-600 mb-3 leading-relaxed">{data.description}</p>
-          )}
-          
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between space-x-4">
-              <span className="text-gray-600">Tasks:</span>
-              <span className="font-semibold text-gray-900">{data.count || data.value}</span>
-            </div>
-            <div className="flex justify-between space-x-4">
-              <span className="text-gray-600">Percentage:</span>
-              <span className="font-semibold text-gray-900">
-                {((data.count || data.value) / totalTasks * 100).toFixed(1)}%
-              </span>
-            </div>
-            
-            {data.storyPoints && (
-              <div className="flex justify-between space-x-4">
-                <span className="text-gray-600">Story Points:</span>
-                <span className="font-semibold text-gray-900">{data.storyPoints}</span>
-              </div>
-            )}
-            
-            {data.completionRate !== undefined && (
-              <div className="flex justify-between space-x-4">
-                <span className="text-gray-600">Completion:</span>
-                <span className="font-semibold text-gray-900">{data.completionRate}%</span>
-              </div>
-            )}
-            
-            {(data.completed || data.inProgress || data.remaining) && (
-              <div className="pt-2 border-t border-gray-200">
-                <div className="text-xs text-gray-500 mb-1">Status Breakdown:</div>
-                <div className="space-y-1 text-xs">
-                  {data.completed > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-green-600">✓ Done:</span>
-                      <span className="text-green-600 font-medium">{data.completed}</span>
-                    </div>
-                  )}
-                  {data.inProgress > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-blue-600">⚡ In Progress:</span>
-                      <span className="text-blue-600 font-medium">{data.inProgress}</span>
-                    </div>
-                  )}
-                  {data.remaining > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">⏳ Remaining:</span>
-                      <span className="text-gray-600 font-medium">{data.remaining}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      );
+      const entries = [
+        { label: 'Count', value: data.count ?? data.value },
+        { label: 'Percentage', value: ((data.count ?? data.value) / totalTasks * 100).toFixed(1), unit: '%' },
+        ...(data.storyPoints ? [{ label: 'Story Points', value: data.storyPoints, unit: 'pts' }] : []),
+      ];
+      return <ChartTooltip title={data.name} description={data.description} entries={entries} />;
     }
     return null;
   };
@@ -175,7 +110,7 @@ const TaskDistributionChart = ({
     return (
       <div className={`bg-white p-6 rounded-lg shadow-dashboard border ${className}`}>
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-gray-900">Task Distribution</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Work Item Breakdown</h3>
           <p className="text-sm text-gray-500">Distribution of work items by type and category</p>
         </div>
         <div className="flex items-center justify-center" style={{ height }}>
@@ -204,7 +139,7 @@ const TaskDistributionChart = ({
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
-            <h3 className="text-lg font-semibold text-gray-900">Task Distribution</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Work Item Breakdown</h3>
             {isUsingSampleData && !loading && (
               <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">
                 Sample Data
@@ -262,7 +197,7 @@ const TaskDistributionChart = ({
                   />
                 ))}
               </Pie>
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<PieTooltip />} />
             </PieChart>
           </ResponsiveContainer>
         </div>

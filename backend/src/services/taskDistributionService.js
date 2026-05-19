@@ -179,19 +179,24 @@ class TaskDistributionService {
       };
 
       bugs.forEach(bug => {
-        const environment = bug.environmentClassification || 'Unclassified';
+        let environment = bug.environmentClassification || 'Unclassified';
+
+        // If still Unclassified, try content inference from title/description
+        if (environment === 'Unclassified' || environment === null) {
+          environment = this._inferEnvironmentFromTitle(bug.title || '') || 'Unclassified';
+        }
+
         const classification = bug.bugClassification || 'Unclassified';
 
         // Track environment breakdown
-        if (environmentBreakdown[environment]) {
-          environmentBreakdown[environment].count++;
-          environmentBreakdown[environment].bugs.push({
-            id: bug.id,
-            title: bug.title,
-            state: bug.state,
-            assignee: bug.assignee
-          });
-        }
+        const targetEnv = environmentBreakdown[environment] ? environment : 'Unclassified';
+        environmentBreakdown[targetEnv].count++;
+        environmentBreakdown[targetEnv].bugs.push({
+          id: bug.id,
+          title: bug.title,
+          state: bug.state,
+          assignee: bug.assignee
+        });
 
         // Track classification breakdown
         classificationBreakdown[classification] = (classificationBreakdown[classification] || 0) + 1;
@@ -294,7 +299,14 @@ class TaskDistributionService {
 
     bugs.forEach(bug => {
       const environment = this.azureService.extractEnvironmentFromBugType(
-        bug.bugType || bug.customFields?.['Bug types'] || ''
+        bug.bugType ||
+        bug.customFields?.bugTypes ||
+        bug.customFields?.['Bug types'] ||
+        bug.customFields?.['bug types'] ||
+        bug.fields?.['Custom.Bugtypes'] ||
+        bug.fields?.['Custom.BugTypes'] ||
+        bug.fields?.['Bug types'] ||
+        ''
       );
 
       const targetEnv = environments[environment] ? environment : 'Unclassified';
@@ -493,6 +505,25 @@ class TaskDistributionService {
       logger.error('Error generating distribution insights:', error);
       throw new Error(`Failed to generate insights: ${error.message}`);
     }
+  }
+
+  /**
+   * Infer environment from bug title using keyword patterns.
+   * Used as fallback when Custom.Bugtypes field is absent.
+   * @param {string} title - Bug title
+   * @returns {string|null} Environment ('Deploy','Prod','SIT','UAT') or null
+   */
+  _inferEnvironmentFromTitle(title) {
+    if (!title || typeof title !== 'string') return null;
+    const t = title.toLowerCase();
+    // Deploy wins over prod if both present
+    if (/deploy/.test(t)) return 'Deploy';
+    if (/\bprod\b|production|\[prod\]|\(prod\)|prod\s+issue/i.test(title)) return 'Prod';
+    if (/\bsit\b|\[sit\]|\(sit\)|system.?integration/i.test(title)) return 'SIT';
+    if (/\buat\b|\[uat\]|\(uat\)|user.?acceptance/i.test(title)) return 'UAT';
+    // CMG / VN / TH prefix bugs — fall back to Prod when title says "issue" or "bug"
+    if (/cmg.*(prod|issue)|prod.*issue/i.test(title)) return 'Prod';
+    return null;
   }
 
   /**

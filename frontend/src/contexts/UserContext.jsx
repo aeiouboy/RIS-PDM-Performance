@@ -17,23 +17,34 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
  */
 
 /**
- * @typedef {Object} LoginCredentials
- * @property {string} email
- * @property {string} password
- */
-
-/**
  * @typedef {Object} UserContextType
  * @property {User|null} user
  * @property {boolean} loading
  * @property {string|null} error
- * @property {(credentials: LoginCredentials) => Promise<void>} login
+ * @property {(credential: string) => Promise<User>} loginWithGoogle
  * @property {() => Promise<void>} logout
  * @property {(updates: Partial<User>) => Promise<void>} updateUser
  * @property {(preferences: Partial<User['preferences']>) => Promise<void>} updatePreferences
  * @property {(file: File) => Promise<void>} uploadAvatar
  * @property {() => Promise<void>} refreshUser
  */
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const AUTH_TOKEN_KEY = 'auth_token';
+const BYPASS_AUTH = import.meta.env.VITE_BYPASS_AUTH === 'true';
+
+// Dev-only bypass user. Active when VITE_BYPASS_AUTH=true.
+const BYPASS_USER = {
+  id: 'dev-bypass',
+  name: 'Dev Bypass',
+  email: 'dev@central.co.th',
+  avatar: null,
+  role: 'admin',
+  department: 'Engineering',
+  preferences: { theme: 'light', notifications: true, language: 'en' },
+  permissions: ['read', 'write', 'admin'],
+  lastLogin: new Date().toISOString(),
+};
 
 // Create contexts with performance optimization
 /** @type {React.Context<UserContextType|undefined>} */
@@ -48,12 +59,12 @@ export const useUser = () => {
   return context;
 };
 
-// Optional: Auth-specific hook
+// Auth-specific hook
 export const useAuth = () => {
-  const { user, login, logout, loading } = useUser();
+  const { user, loginWithGoogle, logout, loading } = useUser();
   return {
     user,
-    login,
+    loginWithGoogle,
     logout,
     loading,
     isAuthenticated: !!user,
@@ -62,131 +73,114 @@ export const useAuth = () => {
   };
 };
 
-// User Provider Implementation with RIS PDM patterns
+/**
+ * Build a minimal user object from JWT claims returned by /auth/me.
+ * The backend's /auth/me only returns claims (sub, email, role, permissions),
+ * which is enough to render gated UI; full profile arrives on next sign-in.
+ */
+const userFromClaims = (claims) => ({
+  id: claims.sub,
+  email: claims.email,
+  name: claims.email,
+  avatar: null,
+  role: claims.role || 'viewer',
+  department: '',
+  preferences: { theme: 'light', notifications: true, language: 'en' },
+  permissions: claims.permissions || ['read'],
+  lastLogin: new Date().toISOString(),
+});
+
 export const UserProvider = memo(({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(false); // Start as false for demo
+  const [user, setUser] = useState(BYPASS_AUTH ? BYPASS_USER : null);
+  const [loading, setLoading] = useState(!BYPASS_AUTH);
   const [error, setError] = useState(null);
 
-  // Initialize user with demo data for RIS PDM
+  // On mount: try to restore a session from localStorage token.
   useEffect(() => {
-    const initializeUser = async () => {
-      try {
-        setLoading(true);
-
-        // Demo user data for RIS PDM - replace with actual API calls
-        const demoUser = {
-          id: 'demo-user-1',
-          name: 'Sarah Chen',
-          email: 'sarah.chen@company.com',
-          avatar: null, // Will be generated from initials
-          role: 'manager',
-          department: 'Engineering',
-          preferences: {
-            theme: 'light',
-            notifications: true,
-            language: 'en'
-          },
-          permissions: ['read', 'write', 'admin'],
-          lastLogin: new Date()
-        };
-
-        // Simulate API delay
-        setTimeout(() => {
-          setUser(demoUser);
-          setLoading(false);
-        }, 1000);
-
-      } catch (err) {
-        console.error('Failed to initialize user:', err);
-        setError('Failed to load user data');
+    if (BYPASS_AUTH) {
+      console.warn('[UserContext] VITE_BYPASS_AUTH=true — login bypassed.');
+      return;
+    }
+    let cancelled = false;
+    const restoreSession = async () => {
+      const token = localStorage.getItem(AUTH_TOKEN_KEY);
+      if (!token) {
         setLoading(false);
+        return;
+      }
+      try {
+        const res = await fetch(`${API_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.status === 200) {
+          const body = await res.json();
+          if (!cancelled && body?.data?.user) {
+            setUser(userFromClaims(body.data.user));
+          }
+        } else if (res.status === 401) {
+          localStorage.removeItem(AUTH_TOKEN_KEY);
+        }
+      } catch (err) {
+        console.error('Session restore failed:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
-
-    initializeUser();
+    restoreSession();
+    return () => { cancelled = true; };
   }, []);
 
-  // Login function with proper error handling
-  const login = useCallback(async (credentials) => {
+  // Sign in with a Google ID token (credential from @react-oauth/google).
+  const loginWithGoogle = useCallback(async (credential) => {
     try {
       setLoading(true);
       setError(null);
 
-      // Demo login - replace with actual API
-      const response = await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          if (credentials.email && credentials.password) {
-            resolve({
-              user: {
-                id: 'demo-user-1',
-                name: 'Sarah Chen',
-                email: credentials.email,
-                avatar: null,
-                role: 'manager',
-                department: 'Engineering',
-                preferences: {
-                  theme: 'light',
-                  notifications: true,
-                  language: 'en'
-                },
-                permissions: ['read', 'write', 'admin'],
-                lastLogin: new Date()
-              },
-              token: 'demo-token-123'
-            });
-          } else {
-            reject(new Error('Invalid credentials'));
-          }
-        }, 1500);
+      const res = await fetch(`${API_URL}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential }),
       });
 
-      // Store token (demo)
-      localStorage.setItem('auth_token', response.token);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.success) {
+        const message = body?.message || body?.error || `Sign-in failed (${res.status})`;
+        throw new Error(message);
+      }
 
-      // Update user state
-      setUser(response.user);
-
-      return response.user;
+      const { token, user: signedInUser } = body.data;
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+      setUser(signedInUser);
+      return signedInUser;
     } catch (err) {
       setError(err.message);
-      throw err; // Re-throw for component handling
+      throw err;
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Logout function
+  // Logout
   const logout = useCallback(async () => {
     try {
       setLoading(true);
-
-      // Call logout endpoint if needed (demo)
-      await new Promise(resolve => setTimeout(resolve, 500));
-    } catch (err) {
-      console.error('Logout API call failed:', err);
+      await fetch(`${API_URL}/auth/logout`, { method: 'POST' }).catch(() => {});
     } finally {
-      // Always clear local state
-      localStorage.removeItem('auth_token');
+      localStorage.removeItem(AUTH_TOKEN_KEY);
       setUser(null);
       setError(null);
       setLoading(false);
     }
   }, []);
 
-  // Update user profile
+  // Update user profile (local-only; backend has no user store)
   const updateUser = useCallback(async (updates) => {
     if (!user) return;
-
     try {
       setLoading(true);
-
-      // Demo API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await new Promise(resolve => setTimeout(resolve, 200));
       const updatedUser = { ...user, ...updates };
       setUser(updatedUser);
-
       return updatedUser;
     } catch (err) {
       setError(err.message);
@@ -204,7 +198,6 @@ export const UserProvider = memo(({ children }) => {
       preferences: { ...user.preferences, ...preferences }
     });
 
-    // Apply theme immediately
     if (preferences.theme) {
       document.documentElement.classList.toggle('dark', preferences.theme === 'dark');
     }
@@ -212,20 +205,14 @@ export const UserProvider = memo(({ children }) => {
     return updatedUser;
   }, [user, updateUser]);
 
-  // Avatar upload function
+  // Avatar upload (local preview only — no backend storage)
   const uploadAvatar = useCallback(async (file) => {
     if (!user) return;
-
     try {
       setLoading(true);
-
-      // Demo file upload
-      const avatarUrl = URL.createObjectURL(file); // Demo - replace with actual upload
-      
-      // Update user with new avatar URL
+      const avatarUrl = URL.createObjectURL(file);
       const updatedUser = { ...user, avatar: avatarUrl };
       setUser(updatedUser);
-
       return avatarUrl;
     } catch (err) {
       setError(err.message);
@@ -238,29 +225,39 @@ export const UserProvider = memo(({ children }) => {
   // Refresh user data
   const refreshUser = useCallback(async () => {
     if (!user) return;
-
     try {
-      // Demo refresh
-      await new Promise(resolve => setTimeout(resolve, 500));
-      // In real app, fetch fresh user data
+      const token = localStorage.getItem(AUTH_TOKEN_KEY);
+      if (!token) return user;
+      const res = await fetch(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const body = await res.json();
+        if (body?.data?.user) {
+          const refreshed = userFromClaims(body.data.user);
+          setUser(refreshed);
+          return refreshed;
+        }
+      }
       return user;
     } catch (err) {
       console.error('Failed to refresh user:', err);
+      return user;
     }
   }, [user]);
 
-  // Memoize context value to prevent unnecessary re-renders (following RIS PDM patterns)
+  // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(() => ({
     user,
     loading,
     error,
-    login,
+    loginWithGoogle,
     logout,
     updateUser,
     updatePreferences,
     uploadAvatar,
     refreshUser,
-  }), [user, loading, error, login, logout, updateUser, updatePreferences, uploadAvatar, refreshUser]);
+  }), [user, loading, error, loginWithGoogle, logout, updateUser, updatePreferences, uploadAvatar, refreshUser]);
 
   return (
     <UserContext.Provider value={contextValue}>
@@ -269,7 +266,6 @@ export const UserProvider = memo(({ children }) => {
   );
 });
 
-// Set display name for debugging (RIS PDM convention)
 UserProvider.displayName = 'UserProvider';
 
 export default UserProvider;

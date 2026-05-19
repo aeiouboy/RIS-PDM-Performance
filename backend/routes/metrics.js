@@ -580,6 +580,9 @@ router.get('/kpis',
     query('period').optional().isIn(['sprint', 'month', 'quarter', 'year']).withMessage('Invalid period'),
     query('productId').optional().notEmpty().withMessage('Product ID cannot be empty'),
     query('sprintId').optional().notEmpty().withMessage('Sprint ID cannot be empty'),
+    query('workItemTypes').optional().notEmpty().withMessage('workItemTypes cannot be empty'),
+    query('resolvedAsCompleted').optional().isBoolean().withMessage('resolvedAsCompleted must be true or false'),
+    query('aggregation').optional().isIn(['storyPoints', 'count']).withMessage('aggregation must be storyPoints or count'),
   ],
   async (req, res, next) => {
     try {
@@ -593,8 +596,17 @@ router.get('/kpis',
         });
       }
 
-      const { period = 'sprint', productId, sprintId, noCache, forceRefresh } = req.query;
-      const cacheKey = `kpis-${period}-${productId}-${sprintId}`;
+      const {
+        period = 'sprint',
+        productId,
+        sprintId,
+        noCache,
+        forceRefresh,
+        workItemTypes,
+        resolvedAsCompleted,
+        aggregation,
+      } = req.query;
+      const cacheKey = `kpis-${period}-${productId}-${sprintId}-${workItemTypes}-${resolvedAsCompleted}-${aggregation}`;
 
       // Handle cache invalidation for force refresh
       if (forceRefresh === 'true' || noCache === 'true') {
@@ -627,7 +639,10 @@ router.get('/kpis',
         kpis = await metricsCalculator.calculateDetailedKPIs({
           period,
           productId,
-          sprintId
+          sprintId,
+          workItemTypes: workItemTypes !== undefined ? workItemTypes : 'Product Backlog Item',
+          resolvedAsCompleted: resolvedAsCompleted !== undefined ? resolvedAsCompleted === 'true' : true,
+          aggregation: aggregation || 'storyPoints',
         });
       } catch (azureError) {
         logger.error('Azure DevOps API error for KPIs:', {
@@ -670,6 +685,9 @@ router.get('/burndown',
   [
     query('sprintId').optional().notEmpty().withMessage('Sprint ID cannot be empty'),
     query('productId').optional().notEmpty().withMessage('Product ID cannot be empty'),
+    query('workItemTypes').optional().notEmpty().withMessage('workItemTypes cannot be empty'),
+    query('resolvedAsCompleted').optional().isBoolean().withMessage('resolvedAsCompleted must be true or false'),
+    query('aggregation').optional().isIn(['storyPoints', 'count']).withMessage('aggregation must be storyPoints or count'),
   ],
   async (req, res, next) => {
     try {
@@ -683,8 +701,8 @@ router.get('/burndown',
         });
       }
 
-      const { sprintId, productId, noCache, forceRefresh } = req.query;
-      const cacheKey = `burndown-${sprintId}-${productId}`;
+      const { sprintId, productId, noCache, forceRefresh, workItemTypes, resolvedAsCompleted, aggregation } = req.query;
+      const cacheKey = `burndown-${sprintId}-${productId}-${workItemTypes}-${resolvedAsCompleted}-${aggregation}`;
 
       // Handle cache invalidation for force refresh
       if (forceRefresh === 'true' || noCache === 'true') {
@@ -715,7 +733,10 @@ router.get('/burndown',
       try {
         burndownData = await metricsCalculator.calculateSprintBurndown({
           sprintId,
-          productId
+          productId,
+          workItemTypes: workItemTypes !== undefined ? workItemTypes : 'Product Backlog Item',
+          resolvedAsCompleted: resolvedAsCompleted !== undefined ? resolvedAsCompleted === 'true' : true,
+          aggregation: aggregation || 'storyPoints',
         });
       } catch (azureError) {
         logger.error('Azure DevOps API error for burndown:', {
@@ -758,6 +779,9 @@ router.get('/velocity-trend',
     query('period').optional().isIn(['sprint', 'month', 'quarter']).withMessage('Invalid period'),
     query('range').optional().isInt({ min: 3, max: 12 }).withMessage('Range must be between 3 and 12'),
     query('productId').optional().notEmpty().withMessage('Product ID cannot be empty'),
+    query('workItemTypes').optional().notEmpty().withMessage('workItemTypes cannot be empty'),
+    query('resolvedAsCompleted').optional().isBoolean().withMessage('resolvedAsCompleted must be true or false'),
+    query('aggregation').optional().isIn(['storyPoints', 'count']).withMessage('aggregation must be storyPoints or count'),
   ],
   async (req, res, next) => {
     try {
@@ -771,8 +795,8 @@ router.get('/velocity-trend',
         });
       }
 
-      const { period = 'sprint', range = 6, productId, noCache } = req.query;
-      const cacheKey = `velocity-trend-${period}-${range}-${productId}`;
+      const { period = 'sprint', range = 6, productId, noCache, workItemTypes, resolvedAsCompleted, aggregation } = req.query;
+      const cacheKey = `velocity-trend-${period}-${range}-${productId}-${workItemTypes}-${resolvedAsCompleted}-${aggregation}`;
 
       if (noCache === 'true') {
         metricsCache.del(cacheKey);
@@ -799,7 +823,10 @@ router.get('/velocity-trend',
         velocityTrend = await metricsCalculator.calculateVelocityTrend({
           period,
           range: parseInt(range),
-          productId
+          productId,
+          workItemTypes: workItemTypes !== undefined ? workItemTypes : 'Product Backlog Item',
+          resolvedAsCompleted: resolvedAsCompleted !== undefined ? resolvedAsCompleted === 'true' : false,
+          aggregation: aggregation || 'count',
         });
       } catch (azureError) {
         logger.error('Azure DevOps API error for velocity trend:', {
@@ -1552,7 +1579,7 @@ router.get('/bug-classification/:projectId',
       }
 
       const { projectId } = req.params;
-      const { environment, severity, startDate, endDate, iterationPath } = req.query;
+      const { environment, severity, startDate, endDate, iterationPath, noCache } = req.query;
 
       // Resolve project name
       let projectName = null;
@@ -1575,6 +1602,14 @@ router.get('/bug-classification/:projectId',
       };
 
       const cacheKey = `bug-classification-${projectName}-${JSON.stringify(filters)}`;
+
+      // Bust cache when noCache=true is passed
+      if (noCache === 'true') {
+        metricsCache.del(cacheKey);
+        await cacheService.clearPattern('ris:cache:workItemDetails:*');
+        await cacheService.clearPattern('ris:cache:workItems:*');
+        logger.info('Bug classification cache busted due to noCache=true');
+      }
 
       // Check cache first
       const cachedData = metricsCache.get(cacheKey);
@@ -2345,5 +2380,102 @@ router.post('/debug/test-iterations', async (req, res) => {
     });
   }
 });
+
+/**
+ * @route   GET /api/metrics/sprint-by-assignee
+ * @desc    2-D pivot: assignee × state with sum of story points (Azure "Current Sprint by Assigned To" widget)
+ * @access  Private
+ * @query   productId, sprintId (default 'current')
+ */
+router.get('/sprint-by-assignee',
+  [
+    query('productId').optional().notEmpty().withMessage('Product ID cannot be empty'),
+    query('sprintId').optional().notEmpty().withMessage('Sprint ID cannot be empty'),
+  ],
+  async (req, res, next) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          error: 'Validation failed',
+          code: 'VALIDATION_ERROR',
+          details: errors.array(),
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const { productId, sprintId = 'current' } = req.query;
+
+      logger.info('Fetching sprint-by-assignee pivot', { productId, sprintId, userId: req.user?.id });
+
+      let data;
+      try {
+        data = await metricsCalculator.calculateSprintByAssignee({ productId, sprintId });
+      } catch (azureError) {
+        logger.error('Azure DevOps API error for sprint-by-assignee:', { error: azureError.message, productId, sprintId });
+        return res.status(503).json({
+          error: 'Azure DevOps service unavailable',
+          message: 'Unable to fetch sprint-by-assignee data from Azure DevOps.',
+          details: azureError.message,
+          timestamp: new Date().toISOString(),
+          retryAfter: 60,
+        });
+      }
+
+      res.json({ success: true, data, timestamp: new Date().toISOString() });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @route   GET /api/metrics/sprint-overview
+ * @desc    Scalar sprint overview (Azure "Sprint Overview" widget)
+ * @access  Private
+ * @query   productId, sprintId (default 'current'), units (workItems|storyPoints, default workItems)
+ */
+router.get('/sprint-overview',
+  [
+    query('productId').optional().notEmpty().withMessage('Product ID cannot be empty'),
+    query('sprintId').optional().notEmpty().withMessage('Sprint ID cannot be empty'),
+    query('units').optional().isIn(['workItems', 'storyPoints']).withMessage('units must be workItems or storyPoints'),
+  ],
+  async (req, res, next) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          error: 'Validation failed',
+          code: 'VALIDATION_ERROR',
+          details: errors.array(),
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const { productId, sprintId = 'current', units = 'workItems' } = req.query;
+
+      logger.info('Fetching sprint overview', { productId, sprintId, units, userId: req.user?.id });
+
+      let data;
+      try {
+        data = await metricsCalculator.calculateSprintOverview({ productId, sprintId, units });
+      } catch (azureError) {
+        logger.error('Azure DevOps API error for sprint-overview:', { error: azureError.message, productId, sprintId });
+        return res.status(503).json({
+          error: 'Azure DevOps service unavailable',
+          message: 'Unable to fetch sprint overview data from Azure DevOps.',
+          details: azureError.message,
+          timestamp: new Date().toISOString(),
+          retryAfter: 60,
+        });
+      }
+
+      res.json({ success: true, data, timestamp: new Date().toISOString() });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 module.exports = router;

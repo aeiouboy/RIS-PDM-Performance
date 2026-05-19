@@ -22,11 +22,14 @@ const Header = memo(({ onMobileMenuToggle }) => {
             </svg>
           </button>
 
-          {/* Logo and title */}
-          <div className="flex items-center">
+          {/* Logo (mobile) + Page title */}
+          <div className="flex items-center gap-3 min-w-0">
             <div className="flex-shrink-0 md:hidden">
-              <ProjectLogo size="sm" showText={true} />
+              <ProjectLogo size="sm" showText={false} />
             </div>
+            <h1 className="text-base sm:text-lg font-semibold tracking-tight text-slate-900 truncate">
+              RIS Performance Dashboard
+            </h1>
           </div>
 
           {/* Right side - User menu and notifications */}

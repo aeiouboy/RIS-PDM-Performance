@@ -23,9 +23,11 @@ class AzureDevOpsApiService {
       'Product - Data as a Service': 'Product - Data as a Service',
       'Product - Partner Management Platform': 'Product - Partner Management Platform',
       'Product - OMNIA': 'Product - OMNIA',
+      'Product - Slick Picking Tool': 'Product - Slick Picking Tool',
       'daas': 'Product - Data as a Service',
       'pmp': 'Product - Partner Management Platform',
-      'omnia': 'Product - OMNIA'
+      'omnia': 'Product - OMNIA',
+      'slick': 'Product - Slick Picking Tool'
     };
 
     // Azure DevOps REST API configuration - use same config as existing service
@@ -344,7 +346,10 @@ class AzureDevOpsApiService {
         metrics.workItemsByState[state] = (metrics.workItemsByState[state] || 0) + 1;
 
         // Story points (only for User Stories typically)
-        const storyPoints = item.fields['Custom.StoryPoint'] ?? 0;
+        // Slick team doesn't fill story points — default to 3 per item so burndown/velocity is non-zero.
+        const project = item.fields['System.TeamProject'];
+        const rawSp = item.fields['Custom.StoryPoint'];
+        const storyPoints = rawSp ?? (project === 'Product - Slick Picking Tool' ? 3 : 0);
         if (storyPoints > 0) {
           metrics.totalStoryPoints += storyPoints;
           if (this.isCompleted(state)) {
@@ -459,19 +464,25 @@ class AzureDevOpsApiService {
    * Process work items to extract relevant data
    */
   processWorkItems(workItems) {
-    return workItems.map(item => ({
+    return workItems.map(item => {
+      // Slick team doesn't fill story points — default to 3 per item.
+      const project = item.fields['System.TeamProject'];
+      const rawSp = item.fields['Custom.StoryPoint'];
+      const storyPoints = rawSp ?? (project === 'Product - Slick Picking Tool' ? 3 : 0);
+      return {
       id: item.id,
       title: item.fields['System.Title'],
       type: item.fields['System.WorkItemType'],
       state: item.fields['System.State'],
-      storyPoints: item.fields['Custom.StoryPoint'] ?? 0,
+      storyPoints,
       assignee: item.fields['System.AssignedTo']?.displayName || 'Unassigned',
       priority: item.fields['Microsoft.VSTS.Common.Priority'] || 2,
       iterationPath: item.fields['System.IterationPath'],
       areaPath: item.fields['System.AreaPath'],
       tags: item.fields['System.Tags'] || '',
       url: item.url
-    }));
+      };
+    });
   }
 
   /**

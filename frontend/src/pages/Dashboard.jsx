@@ -10,18 +10,21 @@ import { PLCard, VelocityCard, BugCountCard, SatisfactionCard } from '../compone
 import SprintBurndownChart from '../components/SprintBurndownChart';
 import TeamVelocityChart from '../components/TeamVelocityChart';
 import TaskDistributionDashboard from '../components/TaskDistributionDashboard';
+import SprintOverviewCard from '../components/SprintOverviewCard';
+import SprintHealthCard from '../components/SprintHealthCard';
+import CurrentSprintByAssignee from '../components/CurrentSprintByAssignee';
 import useSwipeNavigation from '../hooks/useSwipeNavigation.jsx';
 
 const Dashboard = () => {
   // Filter states
-  const [selectedProduct, setSelectedProduct] = useState('Product - Partner Management Platform');
+  const [selectedProduct, setSelectedProduct] = useState('Product - Slick Picking Tool');
   const [selectedSprint, setSelectedSprint] = useState('current');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
   // Reset filters function
   const handleResetFilters = () => {
-    setSelectedProduct('Product - Partner Management Platform');
+    setSelectedProduct('Product - Slick Picking Tool');
     setSelectedSprint('current');
     setStartDate('');
     setEndDate('');
@@ -85,7 +88,7 @@ const Dashboard = () => {
 
   // Fallback state for backward compatibility
   const [fallbackData, setFallbackData] = useState(null);
-  const [fallbackLoading, setFallbackLoading] = useState(true);
+  const [fallbackLoading, setFallbackLoading] = useState(false);
   const [fallbackError, setFallbackError] = useState(null);
 
   // State for component data
@@ -103,25 +106,14 @@ const Dashboard = () => {
   const loading = realtimeLoading && fallbackLoading;
   const error = realtimeError || fallbackError;
   
-  // Debug logging
-  console.log('📊 Dashboard data state:', {
-    realtimeData: !!realtimeData,
-    fallbackData: !!fallbackData,
-    data: !!data,
-    hasKPIs: !!data?.kpis,
-    realtimeLoading,
-    fallbackLoading,
-    loading
-  });
 
   // Fallback API call if real-time is not available
   useEffect(() => {
     const fetchFallbackData = async () => {
       try {
-        console.log('📊 Starting fallback data fetch...');
         setFallbackLoading(true);
         setFallbackError(null);
-        
+
         const response = await axios.get(`/api/metrics/overview${forceTs ? `?noCache=true&_=${forceTs}` : ''}`, {
           timeout: 10000, // 10 second timeout
           headers: {
@@ -129,12 +121,9 @@ const Dashboard = () => {
             'Content-Type': 'application/json'
           }
         });
-        
-        console.log('📊 Fallback response received:', response.data);
-        
+
         if (response.data && response.data.data) {
           setFallbackData(response.data.data);
-          console.log('📊 Fallback data set:', response.data.data);
         } else {
           console.error('📊 Invalid response structure:', response.data);
           setFallbackError('Invalid data structure received');
@@ -143,33 +132,20 @@ const Dashboard = () => {
         console.error('📊 Fallback fetch error:', err);
         setFallbackError(`Failed to load dashboard data: ${err.message}`);
       } finally {
-        console.log('📊 Fallback fetch completed, setting loading to false');
         setFallbackLoading(false);
       }
     };
 
-    // Always try fallback first, then let real-time override if available
-    if (!fallbackData && !fallbackLoading) {
-      console.log('📊 Triggering fallback fetch - no data and not loading');
+    if (!fallbackData) {
       fetchFallbackData();
     }
-    
-    // Also fetch fallback if real-time has been loading for too long
-    const timeoutId = setTimeout(() => {
-      if (realtimeLoading && !realtimeData && !fallbackData) {
-        console.log('📊 Real-time taking too long, using fallback');
-        fetchFallbackData();
-      }
-    }, 3000); // 3 second timeout
-
-    return () => clearTimeout(timeoutId);
-  }, [realtimeData, realtimeLoading, fallbackData, fallbackLoading, forceTs]);
+  }, [realtimeData, realtimeLoading, fallbackData, forceTs]);
 
   // Helper function to normalize project ID for API calls
   const normalizeProjectId = (projectId) => {
     // Ensure we never send just "Product" - always use the full name
     if (projectId === 'Product' || projectId === 'product') {
-      return 'Product - Partner Management Platform';
+      return 'Product - Slick Picking Tool';
     }
     return projectId;
   };
@@ -196,8 +172,7 @@ const Dashboard = () => {
         setKpiData(response.data.data);
       } catch (error) {
         console.error('❌ Error fetching KPI data:', error);
-        console.log('🔄 KPI data fetch failed - leaving null to show error state');
-        setKpiData(null); // Don't use mock data - let components handle error state
+        setKpiData(null);
       } finally {
         setComponentLoading(prev => ({ ...prev, kpis: false }));
       }
@@ -227,7 +202,6 @@ const Dashboard = () => {
         setBurndownData(response.data.data);
       } catch (error) {
         console.error('❌ Error fetching burndown data:', error);
-        console.log('🔄 Burndown data fetch failed - leaving empty to show error state');
         setBurndownData([]); // Empty array will show "no data" state instead of sample data
       } finally {
         setComponentLoading(prev => ({ ...prev, burndown: false }));
@@ -261,7 +235,6 @@ const Dashboard = () => {
         setVelocityTrendData(response.data.data);
       } catch (error) {
         console.error('❌ Error fetching velocity trend data:', error);
-        console.log('🔄 Velocity trend data fetch failed - leaving empty to show error state');
         setVelocityTrendData([]); // Empty array will show "no data" state instead of sample data
       } finally {
         setComponentLoading(prev => ({ ...prev, velocity: false }));
@@ -274,72 +247,10 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="dashboard-container py-8">
-        <div className="flex items-center justify-center min-h-64">
-          <div className="text-center max-w-md mx-auto">
-            {/* Animated Icon and Spinner */}
-            <div className="relative mb-8">
-              {/* Background pulse */}
-              <div className="absolute inset-0 rounded-full bg-blue-100 animate-ping opacity-75"></div>
-              <div className="absolute inset-2 rounded-full bg-blue-200 animate-ping opacity-50" style={{ animationDelay: '0.5s' }}></div>
-
-              {/* Main spinner */}
-              <div className="relative">
-                <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-blue-600 mx-auto"></div>
-
-                {/* Inner dashboard icon */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="animate-pulse">
-                    <svg className="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Animated Text */}
-            <div className="space-y-3">
-              <h3 className="text-xl font-semibold text-gray-900 animate-fade-in">
-                Loading Dashboard
-              </h3>
-
-              {/* Animated dots */}
-              <div className="flex items-center justify-center space-x-1">
-                <span className="text-gray-600">Fetching the latest performance data</span>
-                <div className="flex space-x-1">
-                  <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                  <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                  <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Progress indicators */}
-            <div className="mt-8 space-y-3">
-              <div className="flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-2 animate-pulse" style={{ animationDelay: '0.5s' }}>
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
-                  <span>Real-time metrics</span>
-                </div>
-                <div className="flex items-center space-x-2 animate-pulse" style={{ animationDelay: '1s' }}>
-                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-ping"></div>
-                  <span>Team data</span>
-                </div>
-                <div className="flex items-center space-x-2 animate-pulse" style={{ animationDelay: '1.5s' }}>
-                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-ping"></div>
-                  <span>Analytics</span>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-full animate-pulse relative">
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="dashboard-container py-8 bg-slate-50 min-h-screen flex items-center justify-center">
+        <div className="text-center animate-fade-in">
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-200 border-t-blue-600 mx-auto mb-4"></div>
+          <p className="text-sm text-slate-600">Loading Dashboard…</p>
         </div>
       </div>
     );
@@ -389,129 +300,104 @@ const Dashboard = () => {
       </a>
 
       <div
-        className="dashboard-container py-8 px-4 max-w-screen-2xl mx-auto animate-fade-in"
+        className="dashboard-container bg-slate-50 py-8 px-4 max-w-screen-2xl mx-auto animate-fade-in"
         ref={(el) => swipeNavigation.bindSwipeHandlers(el)}
         role="main"
         id="main-content"
         aria-label="Performance Dashboard"
       >
-      {/* Header with Title and Status */}
-      <header className="mb-8">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-          <div className="flex-1">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">
-              <h1 className="text-4xl font-bold text-gray-900">RIS Performance Dashboard</h1>
-              <div className="flex items-center gap-3">
-                <RealtimeStatus showDetails={true} showControls={true} />
-                <button
-                  onClick={async () => {
-                    const ts = Date.now();
-                    setForceTs(ts);
-                    try {
-                      await refresh({ noCache: true });
-                    } finally {
-                      setTimeout(() => setForceTs(0), 2000);
-                    }
-                  }}
-                  className="btn-primary text-xs h-8 px-3"
-                  title="Fetch fresh data now (bypass caches)"
-                >
-                  Force Refresh
-                </button>
-              </div>
-            </div>
-            <p className="text-lg text-gray-600 mb-4">Overview of team and individual performance metrics</p>
-            {updateCount > 0 && (
-              <div className="flex items-center gap-6 text-sm">
-                <LastUpdateIndicator lastUpdate={lastUpdate} />
-                {connected && (
-                  <span className="text-success-600 font-medium flex items-center gap-1">
-                    <div className="w-2 h-2 bg-success-500 rounded-full animate-pulse"></div>
-                    {updateCount} real-time update{updateCount > 1 ? 's' : ''} received
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <ExportButtons
-              exportType="dashboard"
-              period="sprint"
-              className="flex-shrink-0"
-            />
-            {!connected && (
-              <button
-                onClick={refresh}
-                disabled={loading}
-                className="btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-gray-600 mr-2"></div>
-                    Refreshing...
-                  </>
-                ) : (
-                  'Refresh Data'
-                )}
-              </button>
-            )}
-          </div>
+      {/* Compact action row — title moved to global Header; this row keeps page-level controls only */}
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <RealtimeStatus showDetails={true} showControls={true} />
+          {updateCount > 0 && connected && (
+            <span className="text-xs text-slate-500 hidden sm:inline">
+              <LastUpdateIndicator lastUpdate={lastUpdate} />
+            </span>
+          )}
         </div>
-      </header>
-      
-      {/* Filter Bar */}
-      <section className="bg-white rounded-lg border border-gray-200 shadow-sm mb-6 animate-slide-up">
-        <div className="p-4">
-          <div className="flex justify-end mb-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={async () => {
+              const ts = Date.now();
+              setForceTs(ts);
+              try {
+                await refresh({ noCache: true });
+              } finally {
+                setTimeout(() => setForceTs(0), 2000);
+              }
+            }}
+            className="btn-primary text-xs h-8 px-3"
+            title="Fetch fresh data now (bypass caches)"
+          >
+            Force Refresh
+          </button>
+          <ExportButtons exportType="dashboard" period="sprint" className="flex-shrink-0" />
+          {!connected && (
             <button
-              onClick={handleResetFilters}
-              className="btn-ghost text-sm hover:bg-gray-100 transition-colors duration-200"
-              aria-label="Reset all filters to default values"
+              onClick={refresh}
+              disabled={loading}
+              className="btn-secondary text-xs h-8 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Reset Filters
+              {loading ? 'Refreshing…' : 'Refresh Data'}
             </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Product</label>
-              <ProductSelector
-                selectedProduct={selectedProduct}
-                onProductChange={setSelectedProduct}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Sprint</label>
-              <SprintFilter
-                selectedSprint={selectedSprint}
-                onSprintChange={setSelectedSprint}
-                selectedProject={selectedProduct}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Date Range</label>
-              <DateRangePicker
-                startDate={startDate}
-                endDate={endDate}
-                onDateRangeChange={handleDateRangeChange}
-              />
-            </div>
-          </div>
+          )}
         </div>
-      </section>
+      </div>
+
+      {/* Filter Bar — sticky on desktop only; tighter on tablet to avoid eating viewport */}
+      <div className="lg:sticky lg:top-0 z-30 py-2 bg-white/85 backdrop-blur-md border-b border-slate-200 mb-6 rounded-lg px-4">
+        {/* Single-row filter layout — no separate labels (controls already self-label) + reset inline */}
+        <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
+          <div className="flex-1 min-w-[160px]">
+            <ProductSelector selectedProduct={selectedProduct} onProductChange={setSelectedProduct} />
+          </div>
+          <div className="flex-1 min-w-[160px]">
+            <SprintFilter
+              selectedSprint={selectedSprint}
+              onSprintChange={setSelectedSprint}
+              selectedProject={selectedProduct}
+            />
+          </div>
+          <div className="flex-1 min-w-[160px]">
+            <DateRangePicker startDate={startDate} endDate={endDate} onDateRangeChange={handleDateRangeChange} />
+          </div>
+          <button
+            onClick={handleResetFilters}
+            className="p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md transition-colors flex-shrink-0"
+            aria-label="Reset all filters"
+            title="Reset filters"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Sprint Snapshot - single-project only: Health + Overview side-by-side */}
+      {selectedProduct !== 'all-projects' && (
+        <section className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6" aria-label="Sprint snapshot">
+          <SprintHealthCard
+            productId={normalizeProjectId(selectedProduct)}
+            sprintId={selectedSprint}
+          />
+          <SprintOverviewCard
+            productId={normalizeProjectId(selectedProduct)}
+            sprintId={selectedSprint}
+          />
+        </section>
+      )}
 
       {/* KPI Cards Section - Enhanced Layout with Staggered Animation */}
-      <section className="mb-8" role="region" aria-labelledby="kpi-heading" aria-describedby="kpi-description">
+      <section className="mb-8" role="region" aria-label="Key sprint metrics">
         <div className="flex justify-end mb-6">
           <div className="text-sm text-gray-500 flex items-center gap-2" role="status" aria-live="polite">
             <div className="w-2 h-2 bg-success-500 rounded-full animate-pulse" aria-hidden="true"></div>
             <span>Live data</span>
           </div>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-4">
           <PLCard
             value={kpiData?.pl?.value}
             trend={kpiData?.pl?.trend}
@@ -552,12 +438,12 @@ const Dashboard = () => {
       </section>
 
 
-      {/* Charts Section - Separated Individual Cards */}
-      <section className="mb-8" role="region" aria-labelledby="charts-heading" aria-describedby="charts-description">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Sprint Burndown Chart Card - Glassmorphism */}
+      {/* Charts Section - Burndown 60% + Velocity 40% side-by-side above xl */}
+      <section className="mb-8" role="region" aria-label="Sprint progress charts">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Sprint Burndown Chart Card - Glassmorphism (3/5 width) */}
           <div
-            className="group relative backdrop-blur-lg bg-white/80 rounded-2xl border border-white/20 shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 overflow-hidden p-6"
+            className="lg:col-span-3 group relative backdrop-blur-lg bg-white/80 rounded-2xl border border-white/20 shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 overflow-hidden p-6"
             style={{
               background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
               boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)'
@@ -567,15 +453,16 @@ const Dashboard = () => {
             <SprintBurndownChart
               data={burndownData}
               loading={componentLoading.burndown}
+              units="storyPoints"
               height={280}
               className="animate-fade-in"
               style={{ animationDelay: '0.1s' }}
             />
           </div>
 
-          {/* Team Velocity Trend Chart Card - Glassmorphism */}
+          {/* Velocity Trend Chart Card (2/5 width) */}
           <div
-            className="group relative backdrop-blur-lg bg-white/80 rounded-2xl border border-white/20 shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 overflow-hidden p-6"
+            className="lg:col-span-2 group relative backdrop-blur-lg bg-white/80 rounded-2xl border border-white/20 shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 overflow-hidden p-6"
             style={{
               background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
               boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)'
@@ -585,6 +472,7 @@ const Dashboard = () => {
             <TeamVelocityChart
               data={velocityTrendData}
               loading={componentLoading.velocity}
+              units="workItems"
               height={280}
               className="animate-fade-in"
               style={{ animationDelay: '0.2s' }}
@@ -594,8 +482,18 @@ const Dashboard = () => {
       </section>
 
 
+      {/* This Sprint by Person - single-project only */}
+      {selectedProduct !== 'all-projects' && (
+        <section className="mb-8" aria-label="This Sprint by Person">
+          <CurrentSprintByAssignee
+            productId={normalizeProjectId(selectedProduct)}
+            sprintId={selectedSprint}
+          />
+        </section>
+      )}
+
       {/* Task Distribution & Bug Classification Section - Glassmorphism Card */}
-      <section className="mb-8" role="region" aria-labelledby="distribution-heading">
+      <section className="mb-8" role="region" aria-label="Work Item Breakdown">
         <div
           className="group relative backdrop-blur-lg bg-white/80 rounded-2xl border border-white/20 shadow-xl hover:shadow-2xl transition-all duration-300 overflow-hidden p-6"
           style={{

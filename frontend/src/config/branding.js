@@ -33,19 +33,19 @@ export const brandingConfig = {
   }
 };
 
-// ✅ ENABLED PROJECTS - PMP, DaaS, and OMNIA as per backend PROJECT_CONFIG
+// ✅ ENABLED PROJECTS - DaaS, OMNIA, Slick (PMP hidden temporarily — re-enable by uncommenting)
 export const projectsConfig = [
-  {
-    id: 'Product - Partner Management Platform',
-    name: 'Product - Partner Management Platform',
-    abbreviation: 'PP',
-    description: 'Partner Management Platform',
-    icon: '👥', // Using icon instead of logo
-    color: '#059669',
-    lastUpdate: '7/14/2025',
-    process: 'Align',
-    visibility: 'Private'
-  },
+  // {
+  //   id: 'Product - Partner Management Platform',
+  //   name: 'Product - Partner Management Platform',
+  //   abbreviation: 'PP',
+  //   description: 'Partner Management Platform',
+  //   icon: '👥',
+  //   color: '#059669',
+  //   lastUpdate: '7/14/2025',
+  //   process: 'Align',
+  //   visibility: 'Private'
+  // },
   {
     id: 'Product - Data as a Service',
     name: 'Product - Data as a Service',
@@ -65,6 +65,17 @@ export const projectsConfig = [
     icon: '🛒', // Shopping cart for OMS
     color: '#7C3AED',
     lastUpdate: '1/12/2026',
+    process: 'Align',
+    visibility: 'Private'
+  },
+  {
+    id: 'Product - Slick Picking Tool',
+    name: 'Product - Slick Picking Tool',
+    abbreviation: 'SL',
+    description: 'Slick Picking Tool',
+    icon: '📦', // Warehouse/picking
+    color: '#F59E0B',
+    lastUpdate: '5/15/2026',
     process: 'Align',
     visibility: 'Private'
   },

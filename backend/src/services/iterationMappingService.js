@@ -37,6 +37,17 @@ class IterationMappingService {
           /^sprint[-_\s]*(\d+)$/i
         ],
         examples: ['Delivery 4', 'delivery-4', 'Sprint 18', 'sprint_18']
+      },
+      'Product - Slick Picking Tool': {
+        currentFormat: 'Sprint {YYYY}-{n}',
+        patterns: [
+          /^Sprint\s+\d{4}-(\d+)$/i,
+          /^sprint[-_\s]*\d{4}[-_](\d+)$/i,
+          // Legacy formats kept for older work items
+          /^Sprint\s+(\d+)$/i,
+          /^sprint[-_\s]*(\d+)$/i
+        ],
+        examples: ['Sprint 2026-11', 'sprint_2026-11', 'Sprint 47']
       }
     };
   }

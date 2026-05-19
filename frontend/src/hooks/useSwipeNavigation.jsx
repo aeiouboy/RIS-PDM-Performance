@@ -63,7 +63,7 @@ const useSwipeNavigation = ({
     const deltaY = Math.abs(currentTouch.y - touchStartRef.current.y);
 
     // Determine swipe direction
-    if (Math.abs(deltaX) > 50 && deltaY < 100) {
+    if (Math.abs(deltaX) > 100 && deltaY < 100) {
       const direction = deltaX > 0 ? 'right' : 'left';
       setSwipeDirection(direction);
 
@@ -114,17 +114,30 @@ const useSwipeNavigation = ({
     touchEndRef.current = null;
   };
 
+  const boundElementRef = useRef(null);
+
   const bindSwipeHandlers = (element) => {
+    // Cleanup previously-bound element (handles null on unmount and re-mounts)
+    if (boundElementRef.current) {
+      boundElementRef.current.removeEventListener('touchstart', handleTouchStart);
+      boundElementRef.current.removeEventListener('touchmove', handleTouchMove);
+      boundElementRef.current.removeEventListener('touchend', handleTouchEnd);
+      boundElementRef.current = null;
+    }
+
     if (!element || !enabled) return;
 
     element.addEventListener('touchstart', handleTouchStart, { passive: false });
     element.addEventListener('touchmove', handleTouchMove, { passive: !preventScroll });
     element.addEventListener('touchend', handleTouchEnd, { passive: true });
 
+    boundElementRef.current = element;
+
     return () => {
       element.removeEventListener('touchstart', handleTouchStart);
       element.removeEventListener('touchmove', handleTouchMove);
       element.removeEventListener('touchend', handleTouchEnd);
+      boundElementRef.current = null;
     };
   };
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChartBarIcon } from '@heroicons/react/24/solid';
 import { brandingConfig } from '../config/branding';
 
 const ProjectLogo = ({
@@ -21,13 +22,18 @@ const ProjectLogo = ({
     xl: 'text-3xl'
   };
 
+  const iconSizeClasses = {
+    sm: 'h-5 w-5',
+    md: 'h-7 w-7',
+    lg: 'h-9 w-9',
+    xl: 'h-12 w-12'
+  };
+
   return (
     <div className={`flex items-center ${className}`}>
       {/* Project Icon */}
       <div className={`${sizeClasses[size]} flex-shrink-0 rounded-lg flex items-center justify-center`} style={{ backgroundColor: brandingConfig.colors.primary }}>
-        <span className={`${textSizeClasses[size]} text-white`}>
-          📊
-        </span>
+        <ChartBarIcon className={`${iconSizeClasses[size]} text-white`} />
       </div>
       
       {/* Project Name */}

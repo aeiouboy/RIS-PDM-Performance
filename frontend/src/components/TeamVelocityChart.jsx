@@ -1,107 +1,96 @@
 import React from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Bar, BarChart, ComposedChart, ReferenceLine } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Bar, BarChart, ComposedChart, ReferenceLine, ReferenceArea } from 'recharts';
+import { fmt, fmt0, pct } from '../utils/formatNumber';
+import ChartTooltip from './ChartTooltip';
+import { STATUS_BADGE, HEADINGS } from '../utils/copyGlossary';
 
-const TeamVelocityChart = ({ 
-  data = [], 
-  loading = false, 
+const TeamVelocityChart = ({
+  data = [],
+  loading = false,
   height = 300,
   showCommitmentLine = true,
   showTrendLine = true,
-  className = '' 
+  units = 'workItems',
+  className = ''
 }) => {
+  const unitSuffix = units === 'workItems' ? 'items' : 'pts';
+  const yAxisLabel = units === 'workItems' ? 'Work Items' : 'Story Points';
 
   // Only use real data - don't fall back to sample data
   const chartData = data.length > 0 ? data : [];
-  
+
   // Calculate statistics only if we have data
   const averageVelocity = chartData.length > 0 ? chartData.reduce((sum, item) => sum + item.velocity, 0) / chartData.length : 0;
   const lastThreeAvg = chartData.length >= 3 ? chartData.slice(-3).reduce((sum, item) => sum + item.velocity, 0) / 3 : averageVelocity;
-  const trend = chartData.length > 1 ? 
-    ((chartData[chartData.length - 1].velocity - chartData[0].velocity) / chartData[0].velocity) * 100 : 0;
-  
+  const trendRaw = chartData.length > 1
+    ? (() => {
+        const first = chartData[0].velocity;
+        const last = chartData[chartData.length - 1].velocity;
+        if (first === 0) return last > 0 ? null : 0; // null = "New" case
+        return ((last - first) / first) * 100;
+      })()
+    : 0;
+  const trend = (trendRaw === null || !isFinite(trendRaw)) ? 0 : Math.max(-999, Math.min(999, trendRaw));
+  const trendIsNew = trendRaw === null || (!isFinite(trendRaw ?? 0) && chartData[chartData.length - 1]?.velocity > 0);
+
   const predictability = chartData.length > 0 ? chartData.reduce((sum, item) => {
     return sum + (item.commitment ? (Math.min(item.velocity, item.commitment) / item.commitment) : 1);
   }, 0) / chartData.length * 100 : 0;
 
-  // Enhanced custom tooltip with better design
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      const sprintData = payload[0].payload;
-      const achievement = sprintData.commitment ?
-        ((sprintData.velocity / sprintData.commitment) * 100) : 0;
-      const isOverAchieved = achievement > 100;
-      const isUnderAchieved = achievement < 80;
+  // Commitment Reliability: sum(velocity) / sum(commitment) across sprints with commitment > 0
+  const totalCommitment = chartData.reduce((sum, item) => sum + (item.commitment || 0), 0);
+  const totalVelocity = chartData.reduce((sum, item) => sum + (item.velocity || 0), 0);
+  const reliability = totalCommitment > 0 ? Math.round((totalVelocity / totalCommitment) * 100) : null;
+  const reliabilityBadge = reliability === null ? null
+    : reliability >= 80 ? STATUS_BADGE.good
+    : reliability >= 50 ? STATUS_BADGE.warn
+    : STATUS_BADGE.critical;
 
-      return (
-        <div className="bg-white p-4 border border-gray-200 rounded-xl shadow-lg backdrop-blur-sm">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-3">
-            <p className="font-semibold text-gray-900">{label}</p>
-            {sprintData.commitment && (
-              <div className={`text-xs px-2 py-1 rounded-full font-medium ${
-                isOverAchieved
-                  ? 'bg-success-100 text-success-700'
-                  : isUnderAchieved
-                  ? 'bg-warning-100 text-warning-700'
-                  : 'bg-primary-100 text-primary-700'
-              }`}>
-                {achievement.toFixed(1)}% achieved
-              </div>
-            )}
-          </div>
+  // Carry-over: unplanned slip as % of commitment (clamped >= 0)
+  const carryoverRaw = totalCommitment > 0 ? Math.round(((totalCommitment - totalVelocity) / totalCommitment) * 100) : 0;
+  const carryover = Math.max(0, carryoverRaw);
 
-          {/* Metrics */}
-          <div className="space-y-2">
-            {payload.map((entry, index) => (
-              <div key={index} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full shadow-sm"
-                    style={{ backgroundColor: entry.color }}
-                  />
-                  <span className="text-sm font-medium text-gray-700 capitalize">
-                    {entry.dataKey === 'velocity' ? 'Delivered' : 'Committed'}
-                  </span>
-                </div>
-                <span className="text-sm font-bold text-gray-900 bg-gray-50 px-2 py-1 rounded">
-                  {Number(entry.value).toFixed(1)} pts
-                </span>
-              </div>
-            ))}
-          </div>
+  // Velocity range band (only meaningful with 3+ sprints)
+  const velocities = chartData.map(d => d.velocity).filter(v => v != null);
+  const minVelocity = velocities.length > 0 ? Math.min(...velocities) : 0;
+  const maxVelocity = velocities.length > 0 ? Math.max(...velocities) : 0;
+  const showRangeBand = chartData.length >= 3 && maxVelocity > minVelocity;
 
-          {/* Achievement status */}
-          {sprintData.commitment && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <div className={`text-sm font-medium flex items-center gap-2 ${
-                isOverAchieved
-                  ? 'text-success-600'
-                  : isUnderAchieved
-                  ? 'text-warning-600'
-                  : 'text-primary-600'
-              }`}>
-                <div className={`w-2 h-2 rounded-full ${
-                  isOverAchieved
-                    ? 'bg-success-500'
-                    : isUnderAchieved
-                    ? 'bg-warning-500'
-                    : 'bg-primary-500'
-                }`}></div>
-                {isOverAchieved && 'Exceeded commitment'}
-                {isUnderAchieved && 'Below target achievement'}
-                {!isOverAchieved && !isUnderAchieved && 'Good achievement rate'}
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
-    return null;
+  // Actionable insight line
+  const avgCommitment = totalCommitment > 0 ? totalCommitment / chartData.filter(d => (d.commitment || 0) > 0).length : 0;
+  const suggestedReduction = totalCommitment > 0 ? Math.round(avgCommitment - averageVelocity) : 0;
+  const showInsightLine = (reliability !== null && reliability < 70) || carryover > 30;
+
+  // Velocity tooltip — delegates rendering to shared ChartTooltip primitive
+  const VelocityTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload.length) return null;
+    const sprintData = payload[0].payload;
+    const achievement = sprintData.commitment
+      ? (sprintData.velocity / sprintData.commitment) * 100
+      : null;
+    const badgeTone = achievement === null
+      ? null
+      : achievement > 100 ? 'good' : achievement < 80 ? 'warn' : 'good';
+
+    return (
+      <ChartTooltip
+        title={label}
+        headerBadge={achievement !== null ? { text: `${fmt(achievement)}% achieved`, tone: badgeTone } : undefined}
+        entries={[
+          { label: 'Completed', value: sprintData.velocity, unit: unitSuffix },
+          ...(sprintData.commitment ? [{ label: 'Planned', value: sprintData.commitment, unit: unitSuffix }] : []),
+        ]}
+        footer={achievement !== null ? {
+          text: achievement > 100 ? 'Exceeded commitment' : achievement < 80 ? 'Below target achievement' : 'Good achievement rate',
+          tone: badgeTone,
+        } : undefined}
+      />
+    );
   };
 
   if (loading) {
     return (
-      <div className={`dashboard-card ${className}`}>
+      <div className={`bg-white border border-slate-200 shadow-sm rounded-xl p-6 h-full ${className}`}>
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <div className="skeleton h-6 w-56"></div>
@@ -122,12 +111,12 @@ const TeamVelocityChart = ({
           </div>
         </div>
 
-        <div className="relative bg-gray-50 rounded-lg" style={{ height }}>
+        <div className="relative bg-slate-50 rounded-lg h-64 sm:h-72">
           <div className="absolute inset-0 flex items-end justify-between p-4">
             {[...Array(6)].map((_, i) => (
               <div
                 key={i}
-                className="bg-gray-200 rounded-t animate-pulse"
+                className="bg-slate-200 rounded-t animate-pulse"
                 style={{
                   height: `${Math.random() * 80 + 20}%`,
                   width: '16px',
@@ -137,16 +126,15 @@ const TeamVelocityChart = ({
             ))}
           </div>
 
-          {/* Loading Overlay */}
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-primary-600 mx-auto mb-2"></div>
-              <p className="text-sm text-gray-600">Loading velocity data...</p>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-300 border-t-blue-500 mx-auto mb-2"></div>
+              <p className="text-sm text-slate-500">Loading velocity data...</p>
             </div>
           </div>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="mt-4 pt-4 border-t border-slate-100">
           <div className="grid grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="text-center">
@@ -163,20 +151,20 @@ const TeamVelocityChart = ({
   // Show "No Data" state when chartData is empty
   if (chartData.length === 0) {
     return (
-      <div className={`dashboard-card ${className}`}>
+      <div className={`bg-white border border-slate-200 shadow-sm rounded-xl p-6 h-full ${className}`}>
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-gray-900">Team Velocity Trend</h3>
-          <p className="text-sm text-gray-500">Track team velocity and delivery predictability over sprints</p>
+          <h3 className="text-lg font-semibold text-slate-900">{HEADINGS.velocityTrend.title}</h3>
+          <p className="text-sm text-slate-500 mt-1">{HEADINGS.velocityTrend.subtitle}</p>
         </div>
-        <div className="flex items-center justify-center bg-gray-50/50 rounded-lg" style={{ height }}>
+        <div className="flex items-center justify-center bg-slate-50/50 rounded-lg h-64 sm:h-72">
           <div className="text-center max-w-sm mx-auto p-6">
-            <div className="w-16 h-16 mx-auto mb-4 text-gray-300">
+            <div className="w-16 h-16 mx-auto mb-4 text-slate-300">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-full h-full">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
               </svg>
             </div>
-            <h4 className="text-base font-medium text-gray-900 mb-2">No Velocity Data</h4>
-            <p className="text-sm text-gray-500 mb-4">Complete sprints to see velocity trends and team performance patterns</p>
+            <h4 className="text-base font-medium text-slate-900 mb-2">No Velocity Data</h4>
+            <p className="text-sm text-slate-500 mb-4">Complete sprints to see velocity trends and team performance patterns</p>
             <button className="btn-secondary text-sm">
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -190,196 +178,174 @@ const TeamVelocityChart = ({
   }
 
   return (
-    <div className={`dashboard-card ${className}`}>
+    <div className={`bg-white border border-slate-200 shadow-sm rounded-xl p-6 h-full ${className}`}>
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+      <div className="mb-5">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Team Velocity Trend</h3>
-            <p className="text-sm text-gray-500">Track velocity and delivery predictability over sprints</p>
+            <h3 className="text-lg font-semibold tracking-tight text-slate-900" title={HEADINGS.velocityTrend.subtitle}>{HEADINGS.velocityTrend.title}</h3>
           </div>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-primary-500 rounded-full"></div>
-              <span className="text-sm font-medium text-gray-600">Velocity</span>
+          <div className="flex items-center gap-3 flex-wrap flex-shrink-0">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 bg-indigo-500 rounded-full"></div>
+              <span className="text-xs font-medium text-slate-500">Completed</span>
             </div>
             {showCommitmentLine && (
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-success-500 rounded-full"></div>
-                <span className="text-sm font-medium text-gray-600">Commitment</span>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
+                <span className="text-xs font-medium text-slate-500">Planned</span>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Enhanced Summary Stats */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 bg-gray-50/50 rounded-lg">
-          <div className="flex flex-wrap items-center gap-6">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Average:</span>
-              <span className="font-bold text-lg text-primary-600">{averageVelocity.toFixed(1)} pts</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Last 3:</span>
-              <span className="font-bold text-lg text-secondary-600">{lastThreeAvg.toFixed(1)} pts</span>
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-3">
-            <div className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
               trend >= 5
-                ? 'bg-success-100 text-success-700 border-success-200'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 : trend <= -5
-                ? 'bg-error-100 text-error-700 border-error-200'
-                : 'bg-gray-100 text-gray-700 border-gray-200'
+                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                : 'bg-slate-50 text-slate-600 border-slate-200'
             }`}>
-              {trend >= 0 ? '↗' : '↘'} {Math.abs(trend).toFixed(1)}% trend
+              {trendIsNew ? '✦ New' : `${trend >= 0 ? '↗' : '↘'} ${fmt(Math.abs(trend))}%`}
             </div>
-            <div className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
-              predictability >= 80
-                ? 'bg-success-100 text-success-700 border-success-200'
-                : predictability >= 60
-                ? 'bg-warning-100 text-warning-700 border-warning-200'
-                : 'bg-error-100 text-error-700 border-error-200'
-            }`}>
-              {predictability.toFixed(0)}% predictable
-            </div>
+            {reliabilityBadge && (
+              <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${reliabilityBadge.bg} ${reliabilityBadge.text_cls} ${reliabilityBadge.border}`}>
+                {reliability}% reliable
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Chart */}
-      <div style={{ height }}>
+      <div className="h-64 sm:h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis 
+          <ComposedChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis
               dataKey="sprint"
-              tick={{ fontSize: 12, fill: '#6b7280' }}
-              axisLine={{ stroke: '#e5e7eb' }}
-              tickLine={{ stroke: '#e5e7eb' }}
+              tick={{ fontSize: 11, fill: '#64748b' }}
+              axisLine={{ stroke: '#e2e8f0' }}
+              tickLine={{ stroke: '#e2e8f0' }}
             />
-            <YAxis 
-              tick={{ fontSize: 12, fill: '#6b7280' }}
-              axisLine={{ stroke: '#e5e7eb' }}
-              tickLine={{ stroke: '#e5e7eb' }}
-              label={{ value: 'Story Points', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: '#6b7280' } }}
+            <YAxis
+              tick={{ fontSize: 11, fill: '#64748b' }}
+              axisLine={{ stroke: '#e2e8f0' }}
+              tickLine={{ stroke: '#e2e8f0' }}
+              allowDecimals={units !== 'workItems'}
+              label={{ value: yAxisLabel, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: '#64748b', fontSize: 11 } }}
             />
-            <Tooltip content={<CustomTooltip />} />
-            
+            <Tooltip content={<VelocityTooltip />} />
+
             {/* Average reference line */}
-            <ReferenceLine 
-              y={averageVelocity} 
-              stroke="#9ca3af" 
+            <ReferenceLine
+              y={averageVelocity}
+              stroke="#94a3b8"
               strokeDasharray="4 4"
-              label={{ value: `Avg: ${averageVelocity.toFixed(1)}`, position: 'topRight' }}
+              label={{ value: `Avg: ${fmt(averageVelocity)}`, position: 'topRight', style: { fontSize: 11, fill: '#64748b' } }}
             />
-            
-            {/* Enhanced commitment bars with gradient */}
+
+            {/* Commitment bars */}
             {showCommitmentLine && (
               <Bar
                 dataKey="commitment"
-                fill="url(#commitmentGradient)"
-                opacity={0.4}
-                name="Commitment"
+                fill="#cbd5e1"
+                fillOpacity={0.5}
+                name="Planned"
                 radius={[4, 4, 0, 0]}
               />
             )}
 
-            {/* Enhanced velocity line with shadow */}
+            {/* Velocity line */}
             <Line
               type="monotone"
               dataKey="velocity"
-              stroke="url(#velocityGradient)"
+              stroke="#6366f1"
               strokeWidth={3}
               dot={{
-                fill: '#2563eb',
+                fill: '#6366f1',
                 strokeWidth: 2,
                 r: 5,
-                filter: 'drop-shadow(0 2px 4px rgba(37, 99, 235, 0.3))'
+                filter: 'drop-shadow(0 2px 4px rgba(99, 102, 241, 0.3))'
               }}
               activeDot={{
-                r: 8,
-                fill: '#2563eb',
+                r: 7,
+                fill: '#6366f1',
                 stroke: '#fff',
-                strokeWidth: 3,
-                filter: 'drop-shadow(0 4px 8px rgba(37, 99, 235, 0.4))'
+                strokeWidth: 2,
+                filter: 'drop-shadow(0 4px 8px rgba(99, 102, 241, 0.4))'
               }}
-              name="Velocity"
+              name="Completed"
             />
 
-            {/* Enhanced commitment line */}
+            {/* Commitment line */}
             {showCommitmentLine && (
               <Line
                 type="monotone"
                 dataKey="commitment"
-                stroke="#059669"
+                stroke="#475569"
                 strokeWidth={2}
                 strokeDasharray="6 3"
                 dot={{
-                  fill: '#059669',
+                  fill: '#475569',
                   strokeWidth: 2,
                   r: 4,
                   opacity: 0.8
                 }}
-                name="Commitment"
+                name="Planned"
                 strokeOpacity={0.9}
               />
             )}
 
-            {/* Gradient definitions */}
-            <defs>
-              <linearGradient id="velocityGradient" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#3b82f6" />
-                <stop offset="100%" stopColor="#2563eb" />
-              </linearGradient>
-              <linearGradient id="commitmentGradient" x1="0" y1="1" x2="0" y2="0">
-                <stop offset="0%" stopColor="#10b981" stopOpacity={0.2} />
-                <stop offset="100%" stopColor="#10b981" stopOpacity={0.6} />
-              </linearGradient>
-            </defs>
+            {/* Velocity range band */}
+            {showRangeBand && (
+              <ReferenceArea
+                y1={minVelocity}
+                y2={maxVelocity}
+                fill="#3b82f6"
+                fillOpacity={0.05}
+                label={{ value: 'Range', position: 'insideTopRight', style: { fontSize: 10, fill: '#94a3b8' } }}
+              />
+            )}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Enhanced Footer Stats */}
-      <div className="mt-6 pt-6 border-t border-gray-200">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="text-center p-3 sm:p-4 bg-primary-50/50 rounded-lg">
-            <div className="text-xl sm:text-2xl font-bold text-primary-600 mb-1" aria-label={`${chartData[chartData.length - 1]?.velocity || 0} story points in current sprint`}>
-              {chartData[chartData.length - 1]?.velocity || 0}
+      {/* Footer Stats */}
+      <div className="mt-4 pt-4 border-t border-slate-100">
+        <div className="flex divide-x divide-slate-200">
+          <div className="flex-1 px-3 first:pl-0 last:pr-0">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Current</div>
+            <div className="text-xl font-semibold text-slate-900" aria-label={`${chartData[chartData.length - 1]?.velocity || 0} story points in current sprint`}>
+              {chartData[chartData.length - 1]?.velocity || 0} <span className="text-sm font-normal text-slate-400">{unitSuffix}</span>
             </div>
-            <div className="text-xs sm:text-sm font-medium text-gray-600">Current Sprint</div>
           </div>
-          <div className="text-center p-3 sm:p-4 bg-success-50/50 rounded-lg">
-            <div className="text-xl sm:text-2xl font-bold text-success-600 mb-1" aria-label={`${averageVelocity.toFixed(1)} story points average velocity`}>
-              {averageVelocity.toFixed(1)}
+          <div className="flex-1 px-3 first:pl-0 last:pr-0">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Average</div>
+            <div className="text-xl font-semibold text-slate-900" aria-label={`${fmt(averageVelocity)} story points average velocity`}>
+              {fmt(averageVelocity)} <span className="text-sm font-normal text-slate-400">{unitSuffix}</span>
             </div>
-            <div className="text-xs sm:text-sm font-medium text-gray-600">Average</div>
           </div>
-          <div className="text-center p-3 sm:p-4 bg-secondary-50/50 rounded-lg">
-            <div className={`text-xl sm:text-2xl font-bold mb-1 ${trend >= 0 ? 'text-success-600' : 'text-error-600'}`} aria-label={`${trend >= 0 ? 'Positive' : 'Negative'} ${Math.abs(trend).toFixed(1)} percent trend`}>
-              {trend >= 0 ? '+' : ''}{trend.toFixed(1)}%
+          <div className="flex-1 px-3 first:pl-0 last:pr-0">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Trend</div>
+            <div className={`text-xl font-semibold ${trendIsNew ? 'text-slate-900' : trend >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} aria-label={trendIsNew ? 'New velocity — no prior baseline' : `${trend >= 0 ? 'Positive' : 'Negative'} ${fmt(Math.abs(trend))} percent trend`}>
+              {trendIsNew ? 'New' : `${trend >= 0 ? '+' : ''}${fmt(trend)}`}<span className="text-sm font-normal text-slate-400">{!trendIsNew && '%'}</span>
             </div>
-            <div className="text-xs sm:text-sm font-medium text-gray-600">Trend</div>
           </div>
-          <div className="text-center p-3 sm:p-4 bg-purple-50/50 rounded-lg">
-            <div className="text-xl sm:text-2xl font-bold text-purple-600 mb-1" aria-label={`${predictability.toFixed(0)} percent predictability`}>{predictability.toFixed(0)}%</div>
-            <div className="text-xs sm:text-sm font-medium text-gray-600">Predictability</div>
+          <div className="flex-1 px-3 first:pl-0 last:pr-0">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Carry-over</div>
+            <div className={`text-xl font-semibold ${carryover > 30 ? 'text-rose-700' : 'text-slate-900'}`} aria-label={`${carryover} percent carry-over`}>
+              {carryover}<span className="text-sm font-normal text-slate-400">%</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Performance Insights */}
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="text-sm text-gray-600">
-          <span className="font-medium">Insights: </span>
-          {trend >= 10 && <span className="text-green-600">🚀 Strong upward trend in velocity.</span>}
-          {trend < -10 && <span className="text-red-600">⚠️ Declining velocity trend needs attention.</span>}
-          {Math.abs(trend) < 10 && <span className="text-blue-600">📊 Stable velocity pattern.</span>}
-          {predictability >= 80 && <span className="ml-2 text-green-600">High delivery predictability.</span>}
-          {predictability < 60 && <span className="ml-2 text-yellow-600">Consider improving sprint planning.</span>}
+      {/* Actionable insight only — shown when reliability is low enough to warrant action */}
+      {showInsightLine && suggestedReduction > 0 && (
+        <div className="mt-4 pt-4 border-t border-slate-100">
+          <div className="text-xs text-amber-700">
+            Reliability is {reliability}% — consider lowering commitment by {suggestedReduction} {unitSuffix} to match capacity.
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

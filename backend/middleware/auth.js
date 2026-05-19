@@ -1,4 +1,5 @@
 const { Client } = require('@azure/msal-node');
+const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 
 // MSAL configuration
@@ -95,10 +96,30 @@ const authMiddleware = async (req, res, next) => {
  * @returns {Object} Validation result with user information
  */
 async function validateAzureToken(token) {
+  // First, try to verify the token as our own app JWT (issued by the
+  // Google sign-in flow). This is the common path now.
+  if (process.env.JWT_SECRET) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { issuer: 'ris-pdm' });
+      return {
+        valid: true,
+        user: {
+          id: decoded.sub,
+          email: decoded.email,
+          name: decoded.email,
+          roles: decoded.role ? [decoded.role] : [],
+          permissions: decoded.permissions || [],
+        },
+      };
+    } catch (jwtError) {
+      // Not our JWT — fall through to legacy Azure base64 decode below.
+    }
+  }
+
   try {
     // In a real implementation, you would validate the token with Azure AD
     // This is a simplified version for demonstration
-    
+
     // For now, we'll decode the token and extract user information
     // In production, use proper JWT validation with Azure AD public keys
     const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());

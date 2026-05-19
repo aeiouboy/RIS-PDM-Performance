@@ -26,7 +26,7 @@ const workItemRoutes = require('./routes/workitems');
 const exportRoutes = require('./routes/exports');
 const iterationTestRoutes = require('./routes/iterationTest');
 const { router: webhookRoutes, initializeWebhookService } = require('./src/routes/webhooks');
-const { router: authRoutes, initializeOAuthService } = require('./src/routes/auth');
+const { router: authRoutes, initializeOAuthService, initializeGoogleAuthService } = require('./src/routes/auth');
 
 // Import services
 const AzureDevOpsService = require('./src/services/azureDevOpsService');
@@ -121,7 +121,14 @@ const initializeServices = async () => {
       clientSecret: process.env.AZURE_OAUTH_CLIENT_SECRET,
       redirectUri: process.env.AZURE_OAUTH_REDIRECT_URI
     });
-    
+
+    // Initialize Google Identity Services authentication
+    initializeGoogleAuthService({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      jwtSecret: process.env.JWT_SECRET,
+      allowedEmailDomain: process.env.ALLOWED_EMAIL_DOMAIN || 'central.co.th'
+    });
+
     logger.info('✅ All performance services initialized');
   } catch (error) {
     logger.warn('⚠️ Performance services initialization failed, using fallback:', error.message);

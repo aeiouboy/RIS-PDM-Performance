@@ -1,4 +1,4 @@
-import React, { useState, memo, Suspense } from 'react';
+import React, { useState, useEffect, memo, Suspense } from 'react';
 import {
   createBrowserRouter,
   RouterProvider,
@@ -60,7 +60,24 @@ LoadingSpinner.displayName = 'LoadingSpinner';
 // App Layout Component with User Context
 const AppLayout = memo(() => {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('ris-pdm.sidebar.collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const { user, loading } = useAuth();
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('ris-pdm.sidebar.collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const toggleMobileNav = () => {
     setIsMobileNavOpen(!isMobileNavOpen);
@@ -88,8 +105,8 @@ const AppLayout = memo(() => {
       {/* Desktop Layout */}
       <div className="flex h-screen">
         {/* Desktop Sidebar */}
-        <div className="hidden md:flex md:w-64 md:flex-col">
-          <Sidebar />
+        <div className={`hidden md:flex md:flex-col flex-shrink-0 transition-[width] duration-200 ease-out ${isSidebarCollapsed ? 'md:w-16' : 'md:w-64'}`}>
+          <Sidebar collapsed={isSidebarCollapsed} onToggle={toggleSidebar} />
         </div>
 
         {/* Main content area */}

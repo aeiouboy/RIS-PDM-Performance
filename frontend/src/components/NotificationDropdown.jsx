@@ -4,40 +4,8 @@ import { Fragment } from 'react';
 import { BellIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { formatDistanceToNow } from 'date-fns';
 
-// Demo notifications data
-const DEMO_NOTIFICATIONS = [
-  {
-    id: '1',
-    message: 'Sprint 23 velocity increased by 15% compared to last sprint',
-    type: 'success',
-    timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-    read: false
-  },
-  {
-    id: '2',
-    message: 'Bug count exceeded threshold: 45 critical bugs need attention',
-    type: 'warning',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-    read: false
-  },
-  {
-    id: '3',
-    message: 'Weekly performance report is ready for review',
-    type: 'info',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-    read: true
-  },
-  {
-    id: '4',
-    message: 'Sarah Chen completed all assigned tasks for Sprint 23',
-    type: 'success',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2), // 2 days ago
-    read: true
-  }
-];
-
 const NotificationDropdown = memo(({ className = '' }) => {
-  const [notifications, setNotifications] = useState(DEMO_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState([]);
 
   // Calculate unread count
   const unreadCount = useMemo(() => 

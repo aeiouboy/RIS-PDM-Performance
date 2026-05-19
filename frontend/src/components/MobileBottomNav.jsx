@@ -16,7 +16,6 @@ const MobileBottomNav = ({ className = '' }) => {
           {active && <path d="M3 7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />}
         </svg>
       ),
-      emoji: '🏠',
       path: '/',
       badge: null
     },
@@ -29,7 +28,6 @@ const MobileBottomNav = ({ className = '' }) => {
           {active && <path d="M12 2a4 4 0 100 8 4 4 0 000-8zM3 20v1h18v-1a6 6 0 00-12 0 6 6 0 00-6 0z" />}
         </svg>
       ),
-      emoji: '👥',
       path: '/individual',
       badge: null
     },
@@ -42,7 +40,6 @@ const MobileBottomNav = ({ className = '' }) => {
           {active && <path d="M5 13a2 2 0 012-2h2a2 2 0 012 2v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6zM11 9a2 2 0 012-2h2a2 2 0 012 2v10a2 2 0 01-2 2h-2a2 2 0 01-2-2V9zM17 5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2V5z" />}
         </svg>
       ),
-      emoji: '📊',
       path: '/reports',
       badge: null
     },
@@ -56,7 +53,6 @@ const MobileBottomNav = ({ className = '' }) => {
           {active && <path d="M12 1l3.09 6.26L22 9l-5.91 5.69L17.18 21 12 17.27 6.82 21l1.09-6.31L2 9l6.91-1.74L12 1z" />}
         </svg>
       ),
-      emoji: '⚙️',
       path: '/settings',
       badge: null
     }
@@ -114,10 +110,6 @@ const MobileBottomNav = ({ className = '' }) => {
                   {item.label}
                 </span>
 
-                {/* Active indicator */}
-                {active && (
-                  <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full"></div>
-                )}
               </button>
             );
           })}
