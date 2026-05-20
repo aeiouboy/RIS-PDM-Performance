@@ -25,6 +25,18 @@ COPY --from=deps /app/frontend/node_modules ./frontend/node_modules
 # Copy source code
 COPY . .
 
+# Vite reads import.meta.env.VITE_* at build time — Docker does not auto-forward
+# Railway env vars into the build stage, so we declare them as ARGs (Railway
+# passes matching Variables as --build-arg automatically) and re-export as ENV
+# so `vite build` sees them. Without this, the production bundle shipped with an
+# empty VITE_GOOGLE_CLIENT_ID and the <GoogleLogin> button rendered nothing.
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_API_URL
+ARG VITE_WEBSOCKET_URL
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID \
+    VITE_API_URL=$VITE_API_URL \
+    VITE_WEBSOCKET_URL=$VITE_WEBSOCKET_URL
+
 # Build frontend
 RUN cd frontend && npm run build
 
