@@ -17,13 +17,18 @@ const logger = require('../../utils/logger');
 
 const router = express.Router();
 
-// Rate limiting for auth endpoints
+// Rate limiting for auth endpoints.
+// max=10 was too tight: a single user retrying sign-in (or a diagnostic poll)
+// would 429 every legitimate caller behind the same NAT/IP. Bump to 50 and
+// exclude successful requests so the limit only bites repeated failures
+// (which is the brute-force shape we actually care about).
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 requests per windowMs
+  max: 50,
   message: 'Too many authentication requests, please try again later.',
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
 });
 
 // Initialize OAuth service
