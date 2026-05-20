@@ -324,6 +324,9 @@ router.post('/google',
           success: false,
           error: status === 403 ? 'Forbidden' : 'Unauthorized',
           message: verifyError.message,
+          // Surface Google's underlying reason (audience mismatch, expired
+          // token, etc.) for diagnosability. Non-sensitive.
+          detail: verifyError.detail,
           timestamp: new Date().toISOString()
         });
       }

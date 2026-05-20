@@ -70,7 +70,12 @@ class GoogleAuthService {
       });
     } catch (error) {
       logger.warn('Google ID token verification failed', { message: error.message });
-      throw new Error('Invalid Google credential.');
+      // Surface the underlying Google library reason so misconfiguration
+      // (audience mismatch, expired token, etc.) is diagnosable without
+      // having to dig through server logs. These messages are non-sensitive.
+      const err = new Error('Invalid Google credential.');
+      err.detail = error.message;
+      throw err;
     }
 
     const payload = ticket.getPayload();
