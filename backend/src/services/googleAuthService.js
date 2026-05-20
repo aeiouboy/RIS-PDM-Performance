@@ -16,7 +16,10 @@ const { OAuth2Client } = require('google-auth-library');
 const { getRosterEntry } = require('../config/teamRoster');
 const logger = require('../../utils/logger').child({ component: 'GoogleAuthService' });
 
-const DEFAULT_ALLOWED_DOMAIN = 'central.co.th';
+// '*' means accept any verified Google account when ALLOWED_EMAIL_DOMAIN is
+// unset; production deployments should override this with an explicit whitelist
+// (e.g. 'central.co.th' or 'central.co.th,gmail.com').
+const DEFAULT_ALLOWED_DOMAIN = '*';
 const APP_TOKEN_EXPIRES_IN = '8h';
 const APP_TOKEN_ISSUER = 'ris-pdm';
 
