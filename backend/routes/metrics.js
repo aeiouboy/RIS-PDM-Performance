@@ -734,7 +734,10 @@ router.get('/burndown',
         burndownData = await metricsCalculator.calculateSprintBurndown({
           sprintId,
           productId,
-          workItemTypes: workItemTypes !== undefined ? workItemTypes : 'Product Backlog Item',
+          // Pass workItemTypes through (undefined → calculator picks the smart default:
+          // PBI/User Story when present, else all items in the iteration — keeps PMP/DaaS
+          // PBI-only burndown and unblocks task-level teams like OMNIA).
+          workItemTypes,
           resolvedAsCompleted: resolvedAsCompleted !== undefined ? resolvedAsCompleted === 'true' : true,
           aggregation: aggregation || 'storyPoints',
         });

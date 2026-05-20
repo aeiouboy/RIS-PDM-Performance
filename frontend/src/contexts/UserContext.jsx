@@ -30,21 +30,11 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const AUTH_TOKEN_KEY = 'auth_token';
-const BYPASS_AUTH = import.meta.env.VITE_BYPASS_AUTH === 'true';
-
-// Dev-only bypass user. Active when VITE_BYPASS_AUTH=true.
-const BYPASS_USER = {
-  id: 'dev-bypass',
-  name: 'Dev Bypass',
-  email: 'dev@central.co.th',
-  avatar: null,
-  role: 'admin',
-  department: 'Engineering',
-  preferences: { theme: 'light', notifications: true, language: 'en' },
-  permissions: ['read', 'write', 'admin'],
-  lastLogin: new Date().toISOString(),
-};
+// MUST match the key used by dashboard fetchers (Dashboard.jsx, SprintHealthCard,
+// CurrentSprintByAssignee, IndividualPerformance, ExportButtons, SprintOverviewCard).
+// All of them read `localStorage.getItem('authToken')`; keeping any other key here
+// silently breaks every authenticated API call.
+const AUTH_TOKEN_KEY = 'authToken';
 
 // Create contexts with performance optimization
 /** @type {React.Context<UserContextType|undefined>} */
@@ -74,33 +64,31 @@ export const useAuth = () => {
 };
 
 /**
- * Build a minimal user object from JWT claims returned by /auth/me.
- * The backend's /auth/me only returns claims (sub, email, role, permissions),
- * which is enough to render gated UI; full profile arrives on next sign-in.
+ * Build the app user from JWT claims returned by /auth/me.
+ * The backend now embeds the full display identity (name, department, avatar)
+ * in the JWT, so a session restore preserves the header's "Chongrak Tanaka"
+ * rather than regressing to the raw email. Fields gracefully fall back when
+ * the token is from an older release that only carried minimal claims.
  */
 const userFromClaims = (claims) => ({
   id: claims.sub,
   email: claims.email,
-  name: claims.email,
-  avatar: null,
+  name: claims.name || claims.email,
+  avatar: claims.avatar || null,
   role: claims.role || 'viewer',
-  department: '',
+  department: claims.department || '',
   preferences: { theme: 'light', notifications: true, language: 'en' },
   permissions: claims.permissions || ['read'],
   lastLogin: new Date().toISOString(),
 });
 
 export const UserProvider = memo(({ children }) => {
-  const [user, setUser] = useState(BYPASS_AUTH ? BYPASS_USER : null);
-  const [loading, setLoading] = useState(!BYPASS_AUTH);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   // On mount: try to restore a session from localStorage token.
   useEffect(() => {
-    if (BYPASS_AUTH) {
-      console.warn('[UserContext] VITE_BYPASS_AUTH=true — login bypassed.');
-      return;
-    }
     let cancelled = false;
     const restoreSession = async () => {
       const token = localStorage.getItem(AUTH_TOKEN_KEY);

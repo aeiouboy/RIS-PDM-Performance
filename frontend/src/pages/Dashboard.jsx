@@ -46,7 +46,7 @@ const Dashboard = () => {
 
         const response = await axios.get(`/api/metrics/sprints?${params.toString()}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || 'mock-token'}`,
+            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
             'Content-Type': 'application/json'
           }
         });
@@ -117,7 +117,7 @@ const Dashboard = () => {
         const response = await axios.get(`/api/metrics/overview${forceTs ? `?noCache=true&_=${forceTs}` : ''}`, {
           timeout: 10000, // 10 second timeout
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || 'mock-token'}`,
+            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
             'Content-Type': 'application/json'
           }
         });
@@ -165,7 +165,7 @@ const Dashboard = () => {
         
         const response = await axios.get(`/api/metrics/kpis?${params}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || 'mock-token'}`,
+            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
             'Content-Type': 'application/json'
           }
         });
@@ -195,7 +195,7 @@ const Dashboard = () => {
         
         const response = await axios.get(`/api/metrics/burndown?${params}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || 'mock-token'}`,
+            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
             'Content-Type': 'application/json'
           }
         });
@@ -228,7 +228,7 @@ const Dashboard = () => {
         
         const response = await axios.get(`/api/metrics/velocity-trend?${params}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || 'mock-token'}`,
+            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
             'Content-Type': 'application/json'
           }
         });

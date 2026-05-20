@@ -823,19 +823,9 @@ class MetricsCalculatorService {
    * @private
    */
   calculateUserPerformanceMetrics(workItems) {
-    // For demo purposes, return realistic mock performance metrics
-    console.log(`📊 Generating mock performance metrics for ${workItems.length} work items`);
-    
-    return {
-      completionRate: 82.4,
-      storyPointsDelivered: 87,
-      averageVelocity: 14.5,
-      averageCycleTime: 4.2,
-      productivity: 85.7,
-      totalItems: 24,
-      completedItems: 20,
-      inProgressItems: 4
-    };
+    const err = new Error('calculateUserPerformanceMetrics: real Azure DevOps integration required; mock removed 2026-05-19');
+    err.code = 'NOT_IMPLEMENTED';
+    throw err;
   }
 
   /**
@@ -1183,142 +1173,9 @@ class MetricsCalculatorService {
   }
 
   async calculateUserTrends(userId, period) {
-    try {
-      // For demo purposes, return mock data with realistic scenarios
-      // This ensures the Sprint Velocity widget shows meaningful data
-      console.log(`📊 Generating mock velocity trends for user: ${userId}`);
-      
-      // Return realistic mock data with various scenarios
-      return {
-        velocity: [
-          { 
-            sprint: 'Sprint 18', 
-            value: 8, 
-            commitment: 12, 
-            velocity: 8, 
-            sprintNumber: 18,
-            date: '2025-01-15',
-            achievement: 67 // Under-delivered
-          },
-          { 
-            sprint: 'Sprint 19', 
-            value: 15, 
-            commitment: 13, 
-            velocity: 15, 
-            sprintNumber: 19,
-            date: '2025-01-29',
-            achievement: 115 // Over-delivered
-          },
-          { 
-            sprint: 'Sprint 20', 
-            value: 11, 
-            commitment: 14, 
-            velocity: 11, 
-            sprintNumber: 20,
-            date: '2025-02-12',
-            achievement: 79 // Under-delivered
-          },
-          { 
-            sprint: 'Sprint 21', 
-            value: 18, 
-            commitment: 16, 
-            velocity: 18, 
-            sprintNumber: 21,
-            date: '2025-02-26',
-            achievement: 113 // Over-delivered
-          },
-          { 
-            sprint: 'Sprint 22', 
-            value: 14, 
-            commitment: 15, 
-            velocity: 14, 
-            sprintNumber: 22,
-            date: '2025-03-12',
-            achievement: 93 // Nearly met commitment
-          },
-          { 
-            sprint: 'Sprint 23', 
-            value: 21, 
-            commitment: 18, 
-            velocity: 21, 
-            sprintNumber: 23,
-            date: '2025-03-26',
-            achievement: 117 // Over-delivered - current sprint
-          }
-        ],
-        quality: [{ date: new Date().toISOString().split('T')[0], value: 8.7, status: 'mock' }],
-        productivity: [{ date: new Date().toISOString().split('T')[0], value: 88, status: 'mock' }],
-        status: 'mock',
-        message: 'Realistic sprint velocity data for demonstration',
-        dataSource: 'enhanced_mock_data'
-      };
-    } catch (error) {
-      console.error('Error calculating user trends:', error);
-      // Return realistic mock data with various scenarios
-      return {
-        velocity: [
-          { 
-            sprint: 'Sprint 18', 
-            value: 8, 
-            commitment: 12, 
-            velocity: 8, 
-            sprintNumber: 18,
-            date: '2025-01-15',
-            achievement: 67 // Under-delivered
-          },
-          { 
-            sprint: 'Sprint 19', 
-            value: 15, 
-            commitment: 13, 
-            velocity: 15, 
-            sprintNumber: 19,
-            date: '2025-01-29',
-            achievement: 115 // Over-delivered
-          },
-          { 
-            sprint: 'Sprint 20', 
-            value: 11, 
-            commitment: 14, 
-            velocity: 11, 
-            sprintNumber: 20,
-            date: '2025-02-12',
-            achievement: 79 // Under-delivered
-          },
-          { 
-            sprint: 'Sprint 21', 
-            value: 18, 
-            commitment: 16, 
-            velocity: 18, 
-            sprintNumber: 21,
-            date: '2025-02-26',
-            achievement: 113 // Over-delivered
-          },
-          { 
-            sprint: 'Sprint 22', 
-            value: 14, 
-            commitment: 15, 
-            velocity: 14, 
-            sprintNumber: 22,
-            date: '2025-03-12',
-            achievement: 93 // Nearly met commitment
-          },
-          { 
-            sprint: 'Sprint 23', 
-            value: 21, 
-            commitment: 18, 
-            velocity: 21, 
-            sprintNumber: 23,
-            date: '2025-03-26',
-            achievement: 117 // Over-delivered - current sprint
-          }
-        ],
-        quality: [{ date: new Date().toISOString().split('T')[0], value: 8.7, status: 'mock' }],
-        productivity: [{ date: new Date().toISOString().split('T')[0], value: 88, status: 'mock' }],
-        status: 'mock',
-        message: 'Realistic sprint velocity data for demonstration',
-        dataSource: 'enhanced_mock_data'
-      };
-    }
+    const err = new Error('calculateUserTrends: real Azure DevOps integration required; mock removed 2026-05-19');
+    err.code = 'NOT_IMPLEMENTED';
+    throw err;
   }
 
   async getUserComparisonData(userId, userWorkItems) {
@@ -1386,7 +1243,7 @@ class MetricsCalculatorService {
     const baseValue = metric === 'velocity' ? 3.5 : metric === 'quality' ? 8.2 : 78.5;
     
     for (let i = points - 1; i >= 0; i--) {
-      const variation = (Math.random() - 0.5) * 0.3;
+      const variation = 0;
       const value = baseValue * (1 + variation);
       const date = new Date();
       date.setDate(date.getDate() - (i * 7)); // Weekly data points
@@ -1416,12 +1273,9 @@ class MetricsCalculatorService {
   }
 
   async getTeamAverageMetrics() {
-    // Placeholder for team average calculations
-    return {
-      averageCompletionRate: 75.5,
-      averageVelocity: 3.2,
-      averageCycleTime: 5.8
-    };
+    const err = new Error('getTeamAverageMetrics: real Azure DevOps integration required; mock removed 2026-05-19');
+    err.code = 'NOT_IMPLEMENTED';
+    throw err;
   }
 
   // Placeholder methods for data that requires additional Azure DevOps API calls
@@ -1649,7 +1503,8 @@ class MetricsCalculatorService {
     const {
       sprintId,
       productId,
-      workItemTypes = 'Product Backlog Item',
+      // undefined → smart default applied at the filter step (PBI when present, else all)
+      workItemTypes,
       resolvedAsCompleted = true,
       aggregation = 'storyPoints',
     } = options;
@@ -1698,8 +1553,22 @@ class MetricsCalculatorService {
         }
       }
       
-      // A1: Filter by work item type
-      const filteredItems = this._filterByWorkItemTypes(workItems, workItemTypes);
+      // A1: Filter by work item type.
+      // Smart default when caller didn't specify: prefer PBI/User Story (matches the
+      // Azure "Sprint Burndown" widget) for projects that have strict Product Backlog
+      // Items (PMP/DaaS). For task-level teams (OMNIA: zero strict PBI, only Task/Bug/
+      // User Story), fall back to **all** items so the burndown reflects the sprint
+      // taskboard. Discriminator uses strict PBI presence to avoid the User Story
+      // alias from accidentally matching for OMNIA.
+      let filteredItems;
+      if (workItemTypes === undefined || workItemTypes === null) {
+        const hasStrictPbi = (workItems || []).some(w => (w.workItemType || w.type || '').toLowerCase() === 'product backlog item');
+        filteredItems = hasStrictPbi
+          ? this._filterByWorkItemTypes(workItems, 'Product Backlog Item')
+          : this._filterByWorkItemTypes(workItems, 'all');
+      } else {
+        filteredItems = this._filterByWorkItemTypes(workItems, workItemTypes);
+      }
 
       // A2/A3: Pass resolvedAsCompleted and aggregation to chart generator
       const burndownData = this.generateBurndownChart(filteredItems, sprintData, sprintDuration, { resolvedAsCompleted, aggregation });
@@ -1908,41 +1777,13 @@ class MetricsCalculatorService {
   // Helper methods for new calculations
 
   async calculatePLMetrics(workItems, productId) {
-    // ✅ FIXED - Hard-code DaaS P/L to 5.5M as requested
-    if (productId === 'Product - Data as a Service' || productId === 'Product+-+Data+as+a+Service') {
-      return {
-        value: 5500000, // ฿5.5M
-        // trend: 15.2, // Positive trend
-        // trendValue: '+15.2%',
-        target: 5000000, // ฿5M target
-        status: 'real',
-        message: 'DaaS showing strong profitability this quarter',
-        dataSource: 'financial_systems'
-      };
-    }
-    
-    // ✅ FIXED - Hard-code PMP P/L to 10.5M as requested
-    if (productId === 'Product - Partner Management Platform' || productId === 'Product+-+Partner+Management+Platform') {
-      return {
-        value: 10500000, // ฿10.5M
-        // trend: 22.8, // Strong positive trend
-        // trendValue: '+22.8%',
-        target: 9000000, // ฿9M target
-        status: 'real',
-        message: 'PMP delivering exceptional profitability this quarter',
-        dataSource: 'financial_systems'
-      };
-    }
-    
-    // P/L calculation for other products - requires integration with financial systems
     return {
-      value: 'Processing...',
-      trend: 'Processing...',
-      trendValue: 'Processing...',
-      target: 'Processing...',
-      status: 'processing',
-      message: 'Integrating with financial systems for real P/L data',
-      dataSource: 'pending_financial_integration'
+      value: null,
+      trend: 0,
+      trendValue: '—',
+      status: 'not_available',
+      message: 'P/L metric not yet wired to a real data source',
+      dataSource: 'not_implemented',
     };
   }
 
@@ -1969,14 +1810,13 @@ class MetricsCalculatorService {
   }
 
   async calculateSatisfactionMetrics(workItems) {
-    // Satisfaction calculation - requires integration with survey/feedback systems
     return {
-      value: 'Processing...',
-      trend: 'Processing...',
-      trendValue: 'Processing...',
-      status: 'processing',
-      message: 'Integrating with team satisfaction survey systems',
-      dataSource: 'pending_survey_integration'
+      value: null,
+      trend: 0,
+      trendValue: '—',
+      status: 'not_available',
+      message: 'Satisfaction metric not yet wired to a real data source',
+      dataSource: 'not_implemented',
     };
   }
 
@@ -2338,14 +2178,6 @@ class MetricsCalculatorService {
     return sprints;
   }
 
-  async getSprintCommitment(sprintId) {
-    // Mock implementation - would query Azure DevOps for sprint planning data
-    return {
-      storyPoints: Math.floor(Math.random() * 10) + 35,
-      tasks: Math.floor(Math.random() * 5) + 15
-    };
-  }
-
   async getSprintData(sprintId, productId) {
     try {
       // 🎯 FIXED: Get real sprint data from Azure DevOps instead of hardcoded mock data
@@ -2652,13 +2484,9 @@ class MetricsCalculatorService {
    * @private
    */
   async analyzeTeamSkills(teamId) {
-    // Mock skills analysis - in production would analyze work item types, technologies used, etc.
-    return {
-      technical: (Math.random() * 20 + 75).toFixed(1),
-      domain: (Math.random() * 20 + 70).toFixed(1),
-      process: (Math.random() * 20 + 80).toFixed(1),
-      gaps: []
-    };
+    const err = new Error('analyzeTeamSkills: real Azure DevOps integration required; mock removed 2026-05-19');
+    err.code = 'NOT_IMPLEMENTED';
+    throw err;
   }
 
   /**
@@ -2938,12 +2766,22 @@ class MetricsCalculatorService {
         }
       }
 
-      // Filter to PBIs only (Azure RequirementCategory)
-      const pbis = this._filterByWorkItemTypes(allItems, 'Product Backlog Item');
+      // Data-driven type scope: prefer PBI/User Story (matches Azure "Current Sprint by
+      // Assigned To" widget) for projects that actually track work as PBIs (PMP/DaaS).
+      // For task-level teams (OMNIA: only Task/Bug/User Story in iteration, zero strict
+      // "Product Backlog Item"), fall back to **all** items so the pivot mirrors the
+      // sprint taskboard. The discriminator uses *strict* PBI presence — checking just
+      // `_filterByWorkItemTypes(allItems, 'Product Backlog Item')` would still match
+      // because that filter includes the User Story alias, so OMNIA Sprint 8 (6 USes)
+      // would never fall back. Match the bare type instead.
+      const hasStrictPbi = (allItems || []).some(w => (w.workItemType || w.type || '').toLowerCase() === 'product backlog item');
+      const items = hasStrictPbi
+        ? this._filterByWorkItemTypes(allItems, 'Product Backlog Item')
+        : this._filterByWorkItemTypes(allItems, 'all');
 
       // Group by assignee
       const assigneeMap = {};
-      for (const item of pbis) {
+      for (const item of items) {
         const name = item.assignee || item.assignedTo || 'Unassigned';
         const email = item.assigneeEmail || item.email || '';
         const key = email || name;
@@ -2951,7 +2789,10 @@ class MetricsCalculatorService {
           assigneeMap[key] = { name, email, states: {}, totalSP: 0, totalItems: 0 };
         }
         const state = item.state || 'Unknown';
-        assigneeMap[key].states[state] = (assigneeMap[key].states[state] || 0) + (item.storyPoints || 0);
+        // states[state] is a **count** of items in that state — the frontend table
+        // renders this number directly as the per-state cell. Story-point sums live
+        // in totalSP (and per-state SP can be added later if the UI needs it).
+        assigneeMap[key].states[state] = (assigneeMap[key].states[state] || 0) + 1;
         assigneeMap[key].totalSP += item.storyPoints || 0;
         assigneeMap[key].totalItems += 1;
       }
@@ -2994,14 +2835,19 @@ class MetricsCalculatorService {
         }
       }
 
-      // Filter to PBIs only
-      const pbis = this._filterByWorkItemTypes(allItems, 'Product Backlog Item');
+      // Data-driven type scope (mirrors calculateSprintByAssignee): use strict PBI
+      // presence as the discriminator so OMNIA-style iterations (User Story + Task/Bug,
+      // zero strict PBI) fall back to all items. PMP/DaaS keep their PBI semantics.
+      const hasStrictPbi = (allItems || []).some(w => (w.workItemType || w.type || '').toLowerCase() === 'product backlog item');
+      const items = hasStrictPbi
+        ? this._filterByWorkItemTypes(allItems, 'Product Backlog Item')
+        : this._filterByWorkItemTypes(allItems, 'all');
 
       const completedStates = this._getCompletedStates(true); // use broadest set for overview
-      const completedPBIs = pbis.filter(wi => completedStates.includes(wi.state));
+      const completedItems = items.filter(wi => completedStates.includes(wi.state));
 
-      const totalSP = pbis.reduce((s, wi) => s + (wi.storyPoints || 0), 0);
-      const completedSP = completedPBIs.reduce((s, wi) => s + (wi.storyPoints || 0), 0);
+      const totalSP = items.reduce((s, wi) => s + (wi.storyPoints || 0), 0);
+      const completedSP = completedItems.reduce((s, wi) => s + (wi.storyPoints || 0), 0);
 
       const now = new Date();
       const startDate = sprintData?.startDate ? new Date(sprintData.startDate) : null;
@@ -3018,8 +2864,8 @@ class MetricsCalculatorService {
         endDate: sprintData?.endDate ? new Date(sprintData.endDate).toISOString().split('T')[0] : null,
         daysRemaining,
         daysElapsed,
-        totalItems: pbis.length,
-        completedItems: completedPBIs.length,
+        totalItems: items.length,
+        completedItems: completedItems.length,
         totalSP,
         completedSP,
       };

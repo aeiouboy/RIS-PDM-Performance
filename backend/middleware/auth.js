@@ -19,17 +19,6 @@ const msalConfig = {
  */
 const authMiddleware = async (req, res, next) => {
   try {
-    // Skip authentication if specified (development or temporary production bypass)
-    if (process.env.SKIP_AUTH === 'true') {
-      req.user = {
-        id: 'dev-user',
-        email: 'dev@example.com',
-        name: 'Development User',
-        roles: ['Developer'],
-      };
-      return next();
-    }
-
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
@@ -106,7 +95,12 @@ async function validateAzureToken(token) {
         user: {
           id: decoded.sub,
           email: decoded.email,
-          name: decoded.email,
+          // Prefer the display name embedded in the JWT (set by googleAuthService
+          // .signAppToken); fall back to email for tokens minted before that field
+          // was added.
+          name: decoded.name || decoded.email,
+          department: decoded.department || '',
+          avatar: decoded.avatar || null,
           roles: decoded.role ? [decoded.role] : [],
           permissions: decoded.permissions || [],
         },

@@ -59,7 +59,7 @@ const IndividualPerformance = () => {
 
         const response = await fetch(`/api/metrics/sprints?${params.toString()}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || 'mock-token'}`,
+            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
             'Content-Type': 'application/json'
           }
         });
@@ -449,7 +449,7 @@ const IndividualPerformance = () => {
 
         const response = await fetch(`/api/metrics/individual/${selectedUser}?${params}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || 'mock-token'}`,
+            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
             'Content-Type': 'application/json'
           }
         });

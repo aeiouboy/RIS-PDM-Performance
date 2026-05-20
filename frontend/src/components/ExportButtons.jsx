@@ -50,7 +50,7 @@ const ExportButtons = ({
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('authToken') || 'mock-token'}`,
+          'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
           'Accept': format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         }
       });

@@ -87,11 +87,23 @@ class GoogleAuthService {
       throw new Error('Google credential did not include an email.');
     }
 
-    const allowedDomain = this.allowedEmailDomain.toLowerCase();
-    if (!email.endsWith(`@${allowedDomain}`)) {
-      const err = new Error(`Sign-in restricted to @${allowedDomain} accounts.`);
-      err.code = 'EMAIL_DOMAIN_NOT_ALLOWED';
-      throw err;
+    // ALLOWED_EMAIL_DOMAIN accepts: "*" or "any" (allow any Google account that
+    // verified its email), a single domain ("central.co.th"), or a comma-separated
+    // whitelist ("central.co.th,gmail.com"). Empty falls through to the default.
+    const raw = String(this.allowedEmailDomain || '').toLowerCase().trim();
+    const domains = raw
+      .split(',')
+      .map(d => d.trim())
+      .filter(Boolean);
+    const allowAll = domains.length === 0 || domains.includes('*') || domains.includes('any');
+    if (!allowAll) {
+      const matches = domains.some(d => email.endsWith(`@${d}`));
+      if (!matches) {
+        const list = domains.map(d => `@${d}`).join(', ');
+        const err = new Error(`Sign-in restricted to ${list} accounts.`);
+        err.code = 'EMAIL_DOMAIN_NOT_ALLOWED';
+        throw err;
+      }
     }
 
     return payload;
@@ -153,6 +165,13 @@ class GoogleAuthService {
       {
         sub: user.id,
         email: user.email,
+        // Embed full display identity so session restore (/auth/me) can rebuild
+        // the user without re-running buildAppUser. Without these claims, a page
+        // refresh regresses the header to "tachongrak@central.co.th" instead of
+        // "Chongrak Tanaka".
+        name: user.name,
+        department: user.department,
+        avatar: user.avatar,
         role: user.role,
         permissions: user.permissions,
         iss: APP_TOKEN_ISSUER,

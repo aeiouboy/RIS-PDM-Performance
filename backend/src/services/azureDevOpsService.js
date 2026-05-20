@@ -378,8 +378,9 @@ class AzureDevOpsService {
         );
         
         if (isCurrentSprint) {
-          logger.info(`Iteration path is current sprint (${resolvedIterationPath || iterationPath}), returning mock sprint data instead of all project data`);
-          return this.generateMockCurrentSprintData();
+          const err = new Error('getWorkItems: real Azure DevOps integration required; mock removed 2026-05-19');
+          err.code = 'NOT_IMPLEMENTED';
+          throw err;
         }
         
         // Retry without iteration path filter to prevent infinite recursion
@@ -1091,91 +1092,7 @@ class AzureDevOpsService {
     }
   }
 
-  /**
-   * Generate mock work items data for current sprint (Delivery 4)
-   * @returns {object} Mock current sprint work items data
-   */
-  generateMockCurrentSprintData() {
-    // Based on actual Azure DevOps structure: Delivery 4 (Current)
-    const currentSprintItems = [
-      // Actual items visible in screenshot
-      {
-        id: 52757,
-        title: 'investigate',
-        workItemType: 'Task',
-        assignedTo: 'Kanate Boonsiri',
-        state: 'Active',
-        storyPoints: 3,
-        priority: 2,
-        createdDate: '2025-08-25T00:00:00Z',
-        changedDate: '2025-09-02T12:00:00Z',
-        areaPath: 'Product - Partner Management Platform',
-        iterationPath: 'Product\\Delivery 4'
-      },
-      {
-        id: 52746,
-        title: 'SSP Prod issue Cancel duplicate',
-        workItemType: 'Bug',
-        assignedTo: 'Kanate Boonsiri',
-        state: 'New',
-        storyPoints: 2,
-        priority: 1,
-        createdDate: '2025-08-25T00:00:00Z',
-        changedDate: '2025-09-02T12:00:00Z',
-        areaPath: 'Product - Partner Management Platform',
-        iterationPath: 'Product\\Delivery 4'
-      },
-      {
-        id: 52792,
-        title: 'Fix code',
-        workItemType: 'Task',
-        assignedTo: 'Kanate Boonsiri',
-        state: 'Active',
-        storyPoints: 5,
-        priority: 2,
-        createdDate: '2025-08-26T00:00:00Z',
-        changedDate: '2025-09-02T12:00:00Z',
-        areaPath: 'Product - Partner Management Platform',
-        iterationPath: 'Product\\Delivery 4'
-      },
-      {
-        id: 52745,
-        title: 'CMG Prod issue Shopee Cancel by Item',
-        workItemType: 'Bug',
-        assignedTo: 'Unassigned',
-        state: 'New',
-        storyPoints: 3,
-        priority: 1,
-        createdDate: '2025-08-25T00:00:00Z',
-        changedDate: '2025-09-02T12:00:00Z',
-        areaPath: 'Product - Partner Management Platform',
-        iterationPath: 'Product\\Delivery 4'
-      },
-      // Additional realistic items to reach a proper sprint size
-      ...Array.from({length: 8}, (_, i) => ({
-        id: 52800 + i,
-        title: `Development Task ${i + 1}`,
-        workItemType: 'Task',
-        assignedTo: 'Kanate Boonsiri',
-        state: ['Active', 'Done', 'Committed'][i % 3],
-        storyPoints: Math.floor(Math.random() * 5) + 1,
-        priority: Math.floor(Math.random() * 4) + 1,
-        createdDate: '2025-08-25T00:00:00Z',
-        changedDate: '2025-09-02T12:00:00Z',
-        areaPath: 'Product - Partner Management Platform',
-        iterationPath: 'Product\\Delivery 4'
-      }))
-    ];
 
-    return {
-      workItems: currentSprintItems,
-      query: `SELECT [System.Id] FROM WorkItems WHERE [System.IterationPath] UNDER 'Product\\Delivery 4'`,
-      totalCount: currentSprintItems.length,
-      returnedCount: currentSprintItems.length,
-      isMockData: true,
-      sprint: 'Delivery 4'
-    };
-  }
 
   /**
    * Clear cache (useful for testing or forcing fresh data)

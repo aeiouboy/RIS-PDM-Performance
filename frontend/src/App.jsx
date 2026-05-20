@@ -155,25 +155,9 @@ const router = createBrowserRouter([
         element: <IndividualPerformance />,
         handle: routeHandles.individualUser,
         loader: async ({ params }) => {
-          // Fetch user data for breadcrumb (demo implementation)
-          try {
-            // In real app, fetch from API
-            // const response = await fetch(`/api/users/${params.userId}`);
-            // if (!response.ok) throw new Error('User not found');
-            // const user = await response.json();
-
-            // Demo user data
-            const demoUsers = {
-              '1': { name: 'Sarah Chen' },
-              '2': { name: 'Mike Johnson' },
-              '3': { name: 'Lisa Wang' }
-            };
-
-            const user = demoUsers[params.userId] || { name: `User ${params.userId}` };
-            return { user, userId: params.userId };
-          } catch {
-            return { userId: params.userId }; // Fallback
-          }
+          // Breadcrumb just needs an id; real name resolution happens inside the
+          // IndividualPerformance page once it fetches from /api/users/:id.
+          return { userId: params.userId };
         }
       },
       {
