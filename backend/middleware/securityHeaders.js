@@ -26,6 +26,9 @@ const getSecurityConfig = () => {
         ],
         scriptSrc: [
           "'self'",
+          // Google Identity Services loads its button + popup script from
+          // accounts.google.com/gsi/client — required for <GoogleLogin>.
+          "https://accounts.google.com/gsi/client",
           // Only allow specific scripts in production
           ...(isProduction ? [] : ["'unsafe-eval'"]) // For development only
         ],
@@ -33,13 +36,18 @@ const getSecurityConfig = () => {
           "'self'",
           "wss:", // WebSocket connections
           "https:", // HTTPS API calls
+          // GIS issues XHR/fetch to this origin during the credential flow.
+          "https://accounts.google.com/gsi/",
           ...(isDevelopment ? ["ws:", "http:"] : []) // Development only
         ],
         imgSrc: ["'self'", "data:", "https:"],
         fontSrc: ["'self'", "https:"],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
-        frameSrc: ["'none'"],
+        // GIS renders the sign-in button + account chooser inside iframes
+        // hosted at accounts.google.com/gsi/; without this, the button is
+        // blocked even when the script loads.
+        frameSrc: ["'self'", "https://accounts.google.com/gsi/"],
         childSrc: ["'none'"],
         workerSrc: ["'self'"],
         manifestSrc: ["'self'"],
