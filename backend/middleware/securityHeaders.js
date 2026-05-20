@@ -21,8 +21,14 @@ const getSecurityConfig = () => {
         defaultSrc: ["'self'"],
         styleSrc: [
           "'self'",
-          // Remove unsafe-inline in production, use nonces/hashes instead
-          ...(isProduction ? [] : ["'unsafe-inline'"])
+          // React/Tailwind/component libraries (and GIS's injected button styles)
+          // rely on inline style attributes; without 'unsafe-inline' every styled
+          // component breaks visually. We accept the trade-off for now.
+          "'unsafe-inline'",
+          // Google Fonts (Plus Jakarta Sans is loaded from frontend/index.html)
+          "https://fonts.googleapis.com",
+          // Google Identity Services button stylesheet
+          "https://accounts.google.com/gsi/style",
         ],
         scriptSrc: [
           "'self'",
