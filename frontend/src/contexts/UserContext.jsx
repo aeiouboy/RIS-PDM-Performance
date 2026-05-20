@@ -29,7 +29,12 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
  * @property {() => Promise<void>} refreshUser
  */
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// Default to "" (same-origin relative URLs) so the production build hits the
+// Express server that's serving the SPA without needing VITE_API_URL set in
+// Railway. In dev, Vite's proxy in vite.config.js forwards /auth + /api to the
+// local backend, so "" also works there. Override only when frontend and backend
+// are on different origins.
+const API_URL = import.meta.env.VITE_API_URL || '';
 // MUST match the key used by dashboard fetchers (Dashboard.jsx, SprintHealthCard,
 // CurrentSprintByAssignee, IndividualPerformance, ExportButtons, SprintOverviewCard).
 // All of them read `localStorage.getItem('authToken')`; keeping any other key here
