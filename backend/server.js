@@ -126,7 +126,11 @@ const initializeServices = async () => {
     initializeGoogleAuthService({
       clientId: process.env.GOOGLE_CLIENT_ID,
       jwtSecret: process.env.JWT_SECRET,
-      allowedEmailDomain: process.env.ALLOWED_EMAIL_DOMAIN || 'central.co.th'
+      // Let GoogleAuthService apply its own fail-open default ('*') when the
+      // env var is missing. Hard-coding 'central.co.th' here used to silently
+      // re-lock sign-in whenever the Railway env wasn't picked up — see
+      // commit 6177990 for the incident this fallback caused.
+      allowedEmailDomain: process.env.ALLOWED_EMAIL_DOMAIN
     });
 
     logger.info('✅ All performance services initialized');
