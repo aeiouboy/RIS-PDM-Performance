@@ -43,7 +43,9 @@ const BugClassificationWidget = ({
       if (iterationPath) params.append('iterationPath', iterationPath);
 
       const queryString = params.toString() ? `?${params.toString()}` : '';
-      const response = await fetch(`/api/metrics/bug-classification/${encodeURIComponent(productId)}${queryString}`);
+      const response = await fetch(`/api/metrics/bug-classification/${encodeURIComponent(productId)}${queryString}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` }
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch data: ${response.statusText}`);
@@ -70,7 +72,9 @@ const BugClassificationWidget = ({
         ...(selectedEnvironment && { environment: selectedEnvironment })
       });
 
-      const response = await fetch(`/api/metrics/bug-patterns?${params}`);
+      const response = await fetch(`/api/metrics/bug-patterns?${params}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` }
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch patterns: ${response.statusText}`);
