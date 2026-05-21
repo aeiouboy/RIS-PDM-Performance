@@ -41,7 +41,13 @@ const SprintFilter = ({ selectedSprint, onSprintChange, selectedProject, sprints
           params: selectedProject ? { productId: selectedProject } : {},
           timeout: 8000, // Reduced from 10 seconds to 8 seconds
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            // Every other component on this page sends the bearer token
+            // explicitly (Dashboard.jsx, SprintHealthCard, etc.). When this
+            // request was missing it the endpoint returned 401, axios threw,
+            // and the catch branch surfaced the "Using fallback data" badge —
+            // the sprint dropdown silently showed a synthetic 2-week window.
+            Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`
           }
         });
 
