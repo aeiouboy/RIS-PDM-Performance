@@ -3,6 +3,50 @@ const { query, param, validationResult } = require('express-validator');
 const router = express.Router();
 const logger = require('../utils/logger');
 const { requireRoles } = require('../middleware/auth');
+const AzureDevOpsService = require('../src/services/azureDevOpsService');
+const { azureDevOpsConfig } = require('../src/config/azureDevOpsConfig');
+
+// Initialise the service the same way metrics.js does
+const azureService = new AzureDevOpsService(azureDevOpsConfig);
+
+// Team name confirmed from projectMapping.js line 57
+const OMNIA_TEAM = 'Product - OMNIA Team';
+
+/**
+ * Map a transformed work-item (from azureDevOpsService.transformWorkItem) to the
+ * shape the frontend expects from this route.
+ *
+ * Preserved shape (from original mock):
+ *   id, title, type, state, assignedTo{id,name,email}, priority, storyPoints,
+ *   iteration, area, createdDate, changedDate, description, tags, links, comments
+ */
+function mapWorkItem(item) {
+  return {
+    id: item.id,
+    title: item.title,
+    type: item.type,
+    state: item.state,
+    assignedTo: item.assignee && item.assignee !== 'Unassigned'
+      ? {
+          id: item.assigneeEmail || item.assignee,
+          name: item.assignee,
+          email: item.assigneeEmail || null,
+        }
+      : null,
+    priority: item.priority,
+    storyPoints: item.storyPoints,
+    iteration: item.iterationPath || null,
+    area: item.areaPath || null,
+    createdDate: item.createdDate || null,
+    changedDate: item.changedDate || null,
+    description: item.description || null,
+    tags: item.tags || [],
+    // Relations / comments are not returned by the batch details endpoint;
+    // preserve empty arrays so the response shape stays consistent.
+    links: [],
+    comments: [],
+  };
+}
 
 /**
  * @route   GET /api/workitems
@@ -49,171 +93,63 @@ router.get('/',
         userId: req.user.id,
       });
 
-      // Mock work items data - replace with actual Azure DevOps API calls
-      const mockWorkItems = [
-        {
-          id: 12345,
-          title: 'Implement user authentication service',
-          type: 'Feature',
-          state: 'Active',
-          assignedTo: {
-            id: 'user-1',
-            name: 'Alice Johnson',
-            email: 'alice.johnson@company.com',
-          },
-          createdBy: {
-            id: 'user-manager',
-            name: 'John Doe',
-            email: 'john.doe@company.com',
-          },
-          priority: 2,
-          severity: 'Medium',
-          storyPoints: 8,
-          effort: 13,
-          businessValue: 50,
-          tags: ['authentication', 'security', 'backend'],
-          iteration: 'Sprint 24.3',
-          area: 'RIS Core Platform\\Security',
-          createdDate: '2024-01-15T10:30:00Z',
-          changedDate: '2024-01-20T14:45:00Z',
-          description: 'Implement OAuth 2.0 authentication service with Azure AD integration',
-          acceptanceCriteria: [
-            'Users can login with Azure AD credentials',
-            'JWT tokens are issued upon successful authentication',
-            'Token refresh mechanism is implemented',
-          ],
-          links: [
-            {
-              rel: 'System.LinkTypes.Hierarchy-Reverse',
-              url: 'https://dev.azure.com/org/project/_apis/wit/workItems/12300',
-              title: 'Authentication Epic',
-            },
-          ],
-          comments: [
-            {
-              id: 1,
-              text: 'Started implementation of OAuth flow',
-              createdBy: 'Alice Johnson',
-              createdDate: '2024-01-18T09:15:00Z',
-            },
-          ],
-        },
-        {
-          id: 12346,
-          title: 'Fix login redirect issue',
-          type: 'Bug',
-          state: 'New',
-          assignedTo: {
-            id: 'user-2',
-            name: 'Bob Wilson',
-            email: 'bob.wilson@company.com',
-          },
-          createdBy: {
-            id: 'user-qa',
-            name: 'Carol Davis',
-            email: 'carol.davis@company.com',
-          },
-          priority: 1,
-          severity: 'High',
-          storyPoints: 3,
-          effort: 5,
-          businessValue: 20,
-          tags: ['bug', 'authentication', 'frontend'],
-          iteration: 'Sprint 24.3',
-          area: 'RIS Core Platform\\UI',
-          createdDate: '2024-01-20T16:20:00Z',
-          changedDate: '2024-01-20T16:20:00Z',
-          description: 'Users are not redirected to the correct page after login',
-          reproducationSteps: [
-            'Navigate to login page',
-            'Enter valid credentials',
-            'Click login button',
-            'Observe incorrect redirect',
-          ],
-          links: [],
-          comments: [],
-        },
-        {
-          id: 12347,
-          title: 'Update claims processing workflow',
-          type: 'User Story',
-          state: 'Active',
-          assignedTo: {
-            id: 'user-3',
-            name: 'David Chen',
-            email: 'david.chen@company.com',
-          },
-          createdBy: {
-            id: 'user-po',
-            name: 'Emma Product Owner',
-            email: 'emma.po@company.com',
-          },
-          priority: 2,
-          severity: 'Medium',
-          storyPoints: 5,
-          effort: 8,
-          businessValue: 30,
-          tags: ['claims', 'workflow', 'process'],
-          iteration: 'Sprint 24.3',
-          area: 'Claims Processing\\Workflow',
-          createdDate: '2024-01-12T11:00:00Z',
-          changedDate: '2024-01-19T13:30:00Z',
-          description: 'As a claims processor, I want an updated workflow to handle complex claims more efficiently',
-          acceptanceCriteria: [
-            'New workflow handles multi-step approvals',
-            'Automated routing based on claim type',
-            'Email notifications for status changes',
-          ],
-          links: [],
-          comments: [
-            {
-              id: 1,
-              text: 'Working on workflow design document',
-              createdBy: 'David Chen',
-              createdDate: '2024-01-19T13:30:00Z',
-            },
-          ],
-        },
-      ];
+      // Build queryOptions for the service
+      const queryOptions = {
+        workItemTypes: workItemType ? [workItemType] : ['Epic', 'Feature', 'User Story', 'Task', 'Bug'],
+        states: state ? [state] : null,
+        iterationPath: iteration || null,
+        areaPath: area || null,
+        assignedTo: assignedTo || null,
+        maxResults: parseInt(limit) + parseInt(offset), // fetch enough to paginate
+      };
 
-      // Apply filters
-      let filteredWorkItems = [...mockWorkItems];
-
-      if (assignedTo) {
-        filteredWorkItems = filteredWorkItems.filter(item => 
-          item.assignedTo && item.assignedTo.id === assignedTo
-        );
+      // Step 1: Run WIQL to get matching IDs
+      let wiqlResult;
+      try {
+        wiqlResult = await azureService.getWorkItems(queryOptions);
+      } catch (svcError) {
+        logger.error('Azure DevOps getWorkItems failed:', svcError);
+        return res.status(502).json({
+          error: 'Failed to fetch work items from Azure DevOps',
+          code: 'AZURE_DEVOPS_ERROR',
+          message: svcError.message,
+          timestamp: new Date().toISOString(),
+        });
       }
 
-      if (state) {
-        filteredWorkItems = filteredWorkItems.filter(item => item.state === state);
-      }
+      const allIds = (wiqlResult.workItems || []).map(wi => wi.id);
 
-      if (workItemType) {
-        filteredWorkItems = filteredWorkItems.filter(item => item.type === workItemType);
-      }
+      // Apply priority filter post-query (WIQL result only has IDs; priority is a detail field)
+      // We'll filter after fetching details below.
 
-      if (iteration) {
-        filteredWorkItems = filteredWorkItems.filter(item => 
-          item.iteration && item.iteration.includes(iteration)
-        );
-      }
+      // Step 2: Paginate IDs before detail fetch to avoid unnecessary API calls
+      const total = allIds.length;
+      const pageIds = allIds.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
 
-      if (area) {
-        filteredWorkItems = filteredWorkItems.filter(item => 
-          item.area && item.area.includes(area)
-        );
-      }
+      let workItems = [];
+      if (pageIds.length > 0) {
+        let detailResult;
+        try {
+          detailResult = await azureService.getWorkItemDetails(pageIds);
+        } catch (svcError) {
+          logger.error('Azure DevOps getWorkItemDetails failed:', svcError);
+          return res.status(502).json({
+            error: 'Failed to fetch work item details from Azure DevOps',
+            code: 'AZURE_DEVOPS_ERROR',
+            message: svcError.message,
+            timestamp: new Date().toISOString(),
+          });
+        }
 
-      if (priority) {
-        filteredWorkItems = filteredWorkItems.filter(item => 
-          item.priority === parseInt(priority)
-        );
-      }
+        let items = (detailResult.workItems || []).map(mapWorkItem);
 
-      // Apply pagination
-      const total = filteredWorkItems.length;
-      const workItems = filteredWorkItems.slice(offset, offset + parseInt(limit));
+        // Apply priority filter (detail-level) if requested
+        if (priority) {
+          items = items.filter(item => item.priority === parseInt(priority));
+        }
+
+        workItems = items;
+      }
 
       res.json({
         data: workItems,
@@ -221,7 +157,7 @@ router.get('/',
           total,
           limit: parseInt(limit),
           offset: parseInt(offset),
-          hasMore: offset + workItems.length < total,
+          hasMore: parseInt(offset) + workItems.length < total,
         },
         filters: {
           assignedTo,
@@ -238,6 +174,77 @@ router.get('/',
     }
   }
 );
+
+/**
+ * @route   GET /api/workitems/meta/iterations
+ * @desc    Get available iterations/sprints
+ * @access  Private
+ *
+ * NOTE: This route MUST be declared before /:workItemId to avoid Express
+ * treating "meta" as a work item ID.
+ */
+router.get('/meta/iterations', async (req, res, next) => {
+  try {
+    logger.info(`Fetching iterations for user ${req.user.email}`, {
+      userId: req.user.id,
+    });
+
+    let result;
+    try {
+      result = await azureService.getIterations(OMNIA_TEAM, 'all');
+    } catch (svcError) {
+      logger.error('Azure DevOps getIterations failed:', svcError);
+      return res.status(502).json({
+        error: 'Failed to fetch iterations from Azure DevOps',
+        code: 'AZURE_DEVOPS_ERROR',
+        message: svcError.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const iterations = (result.iterations || []).map(iter => ({
+      id: iter.id,
+      name: iter.name,
+      path: iter.path,
+      startDate: iter.attributes?.startDate || null,
+      endDate: iter.attributes?.finishDate || null,
+      state: iter.attributes?.timeFrame || null,
+      workItemCount: iter.workItemCount || 0,
+    }));
+
+    res.json({
+      data: iterations,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   GET /api/workitems/meta/areas
+ * @desc    Get available area paths
+ * @access  Private
+ *
+ * TODO: AzureDevOpsService does not expose a getAreas() method.
+ *       Implement azureService.getAreas() and wire it here when available.
+ */
+router.get('/meta/areas', async (req, res, next) => {
+  try {
+    logger.info(`Area paths requested by user ${req.user.email} — not yet implemented`, {
+      userId: req.user.id,
+    });
+
+    return res.status(501).json({
+      error: 'Not implemented',
+      code: 'NOT_IMPLEMENTED',
+      message: 'Area path listing requires azureService.getAreas() which is not yet available. Implement that method and wire it here.',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * @route   GET /api/workitems/:workItemId
@@ -260,141 +267,37 @@ router.get('/:workItemId',
         });
       }
 
-      const { workItemId } = req.params;
+      const workItemId = parseInt(req.params.workItemId);
 
       logger.info(`Fetching work item ${workItemId} for user ${req.user.email}`, {
         workItemId,
         userId: req.user.id,
       });
 
-      // Mock detailed work item - replace with Azure DevOps API call
-      const workItem = {
-        id: parseInt(workItemId),
-        title: 'Implement user authentication service',
-        type: 'Feature',
-        state: 'Active',
-        assignedTo: {
-          id: 'user-1',
-          name: 'Alice Johnson',
-          email: 'alice.johnson@company.com',
-          avatar: 'https://avatar.example.com/alice.jpg',
-        },
-        createdBy: {
-          id: 'user-manager',
-          name: 'John Doe',
-          email: 'john.doe@company.com',
-        },
-        priority: 2,
-        severity: 'Medium',
-        storyPoints: 8,
-        effort: 13,
-        businessValue: 50,
-        tags: ['authentication', 'security', 'backend'],
-        iteration: 'Sprint 24.3',
-        area: 'RIS Core Platform\\Security',
-        createdDate: '2024-01-15T10:30:00Z',
-        changedDate: '2024-01-20T14:45:00Z',
-        description: 'Implement OAuth 2.0 authentication service with Azure AD integration for secure user login and token management.',
-        acceptanceCriteria: [
-          'Users can login with Azure AD credentials',
-          'JWT tokens are issued upon successful authentication',
-          'Token refresh mechanism is implemented',
-          'Logout functionality clears tokens',
-          'Error handling for failed authentication',
-        ],
-        tasks: [
-          {
-            id: 12348,
-            title: 'Setup Azure AD app registration',
-            state: 'Closed',
-            assignedTo: 'Alice Johnson',
-            estimatedHours: 2,
-          },
-          {
-            id: 12349,
-            title: 'Implement OAuth 2.0 flow',
-            state: 'Active',
-            assignedTo: 'Alice Johnson',
-            estimatedHours: 8,
-          },
-          {
-            id: 12350,
-            title: 'Add JWT token management',
-            state: 'New',
-            assignedTo: 'Alice Johnson',
-            estimatedHours: 3,
-          },
-        ],
-        history: [
-          {
-            date: '2024-01-20T14:45:00Z',
-            user: 'Alice Johnson',
-            field: 'State',
-            oldValue: 'New',
-            newValue: 'Active',
-          },
-          {
-            date: '2024-01-18T09:15:00Z',
-            user: 'Alice Johnson',
-            field: 'Assigned To',
-            oldValue: 'Unassigned',
-            newValue: 'Alice Johnson',
-          },
-        ],
-        attachments: [
-          {
-            id: 'att-1',
-            name: 'authentication-flow.png',
-            size: 125680,
-            uploadedBy: 'John Doe',
-            uploadedDate: '2024-01-15T11:00:00Z',
-            url: 'https://dev.azure.com/org/project/_apis/wit/attachments/att-1',
-          },
-        ],
-        links: [
-          {
-            rel: 'System.LinkTypes.Hierarchy-Reverse',
-            workItemId: 12300,
-            title: 'Authentication Epic',
-            type: 'Epic',
-          },
-          {
-            rel: 'System.LinkTypes.Related',
-            workItemId: 12346,
-            title: 'Fix login redirect issue',
-            type: 'Bug',
-          },
-        ],
-        comments: [
-          {
-            id: 1,
-            text: 'Started implementation of OAuth flow. Azure AD app registration is complete.',
-            createdBy: {
-              name: 'Alice Johnson',
-              email: 'alice.johnson@company.com',
-            },
-            createdDate: '2024-01-18T09:15:00Z',
-          },
-          {
-            id: 2,
-            text: 'Please ensure error handling covers all Azure AD error scenarios.',
-            createdBy: {
-              name: 'John Doe',
-              email: 'john.doe@company.com',
-            },
-            createdDate: '2024-01-19T14:20:00Z',
-          },
-        ],
-      };
-
-      if (parseInt(workItemId) !== 12345) {
-        return res.status(404).json({
-          error: 'Work item not found',
-          code: 'WORK_ITEM_NOT_FOUND',
-          workItemId: parseInt(workItemId),
+      let detailResult;
+      try {
+        detailResult = await azureService.getWorkItemDetails([workItemId]);
+      } catch (svcError) {
+        logger.error(`Azure DevOps getWorkItemDetails(${workItemId}) failed:`, svcError);
+        return res.status(502).json({
+          error: 'Failed to fetch work item from Azure DevOps',
+          code: 'AZURE_DEVOPS_ERROR',
+          message: svcError.message,
           timestamp: new Date().toISOString(),
         });
       }
+
+      const items = detailResult.workItems || [];
+      if (items.length === 0) {
+        return res.status(404).json({
+          error: 'Work item not found',
+          code: 'WORK_ITEM_NOT_FOUND',
+          workItemId,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const workItem = mapWorkItem(items[0]);
 
       res.json({
         data: workItem,
@@ -405,127 +308,6 @@ router.get('/:workItemId',
     }
   }
 );
-
-/**
- * @route   GET /api/workitems/iterations
- * @desc    Get available iterations/sprints
- * @access  Private
- */
-router.get('/meta/iterations', async (req, res, next) => {
-  try {
-    logger.info(`Fetching iterations for user ${req.user.email}`, {
-      userId: req.user.id,
-    });
-
-    // Mock iterations data
-    const iterations = [
-      {
-        id: 'iter-243',
-        name: 'Sprint 24.3',
-        path: '\\RIS\\2024\\Sprint 24.3',
-        startDate: '2024-01-15T00:00:00Z',
-        endDate: '2024-01-28T23:59:59Z',
-        state: 'current',
-        workItemCount: 23,
-      },
-      {
-        id: 'iter-242',
-        name: 'Sprint 24.2',
-        path: '\\RIS\\2024\\Sprint 24.2',
-        startDate: '2024-01-01T00:00:00Z',
-        endDate: '2024-01-14T23:59:59Z',
-        state: 'closed',
-        workItemCount: 28,
-      },
-      {
-        id: 'iter-244',
-        name: 'Sprint 24.4',
-        path: '\\RIS\\2024\\Sprint 24.4',
-        startDate: '2024-01-29T00:00:00Z',
-        endDate: '2024-02-11T23:59:59Z',
-        state: 'future',
-        workItemCount: 15,
-      },
-    ];
-
-    res.json({
-      data: iterations,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * @route   GET /api/workitems/areas
- * @desc    Get available area paths
- * @access  Private
- */
-router.get('/meta/areas', async (req, res, next) => {
-  try {
-    logger.info(`Fetching area paths for user ${req.user.email}`, {
-      userId: req.user.id,
-    });
-
-    // Mock area paths data
-    const areas = [
-      {
-        id: 'area-1',
-        name: 'RIS Core Platform',
-        path: '\\RIS Core Platform',
-        hasChildren: true,
-        children: [
-          {
-            id: 'area-1-1',
-            name: 'Security',
-            path: '\\RIS Core Platform\\Security',
-            hasChildren: false,
-          },
-          {
-            id: 'area-1-2',
-            name: 'UI',
-            path: '\\RIS Core Platform\\UI',
-            hasChildren: false,
-          },
-          {
-            id: 'area-1-3',
-            name: 'API',
-            path: '\\RIS Core Platform\\API',
-            hasChildren: false,
-          },
-        ],
-      },
-      {
-        id: 'area-2',
-        name: 'Claims Processing',
-        path: '\\Claims Processing',
-        hasChildren: true,
-        children: [
-          {
-            id: 'area-2-1',
-            name: 'Workflow',
-            path: '\\Claims Processing\\Workflow',
-            hasChildren: false,
-          },
-          {
-            id: 'area-2-2',
-            name: 'Reporting',
-            path: '\\Claims Processing\\Reporting',
-            hasChildren: false,
-          },
-        ],
-      },
-    ];
-
-    res.json({
-      data: areas,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
 
 /**
  * @route   PUT /api/workitems/:workItemId
@@ -548,7 +330,7 @@ router.put('/:workItemId',
         });
       }
 
-      const { workItemId } = req.params;
+      const workItemId = parseInt(req.params.workItemId);
       const updates = req.body;
 
       logger.info(`Updating work item ${workItemId} for user ${req.user.email}`, {
@@ -557,11 +339,36 @@ router.put('/:workItemId',
         userId: req.user.id,
       });
 
-      // In a real implementation, validate updates and call Azure DevOps API
-      res.status(501).json({
-        error: 'Not implemented',
-        code: 'NOT_IMPLEMENTED',
-        message: 'Work item updates not yet implemented',
+      // Map route-level field names to service-level field names
+      const serviceUpdates = {};
+      if (updates.title !== undefined) serviceUpdates.title = updates.title;
+      if (updates.description !== undefined) serviceUpdates.description = updates.description;
+      if (updates.state !== undefined) serviceUpdates.state = updates.state;
+      if (updates.assignedTo !== undefined) {
+        // Route accepts assignedTo as a string (email/display name) or null
+        serviceUpdates.assignedTo = updates.assignedTo?.email || updates.assignedTo || null;
+      }
+      if (updates.storyPoints !== undefined) serviceUpdates.storyPoints = updates.storyPoints;
+      if (updates.priority !== undefined) serviceUpdates.priority = updates.priority;
+      if (updates.tags !== undefined) serviceUpdates.tags = updates.tags;
+      if (updates.area !== undefined) serviceUpdates.areaPath = updates.area;
+      if (updates.iteration !== undefined) serviceUpdates.iterationPath = updates.iteration;
+
+      let updated;
+      try {
+        updated = await azureService.updateWorkItem(workItemId, serviceUpdates);
+      } catch (svcError) {
+        logger.error(`Azure DevOps updateWorkItem(${workItemId}) failed:`, svcError);
+        return res.status(502).json({
+          error: 'Failed to update work item in Azure DevOps',
+          code: 'AZURE_DEVOPS_ERROR',
+          message: svcError.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      res.json({
+        data: mapWorkItem(updated),
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
