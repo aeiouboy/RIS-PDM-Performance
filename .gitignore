@@ -61,3 +61,14 @@ dump.rdb
 # MCP/Claude specific
 .claude/
 .bmad-core/
+
+# OMC / agent state (per-machine, not for repo)
+.omc/
+.claude-mem/
+claudemem.config.json
+
+# Playwright MCP screenshots (test artifacts, not source)
+.playwright-mcp/
+
+# Local Claude config
+.claude/settings.local.json
