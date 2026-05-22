@@ -4,16 +4,15 @@ const UserMenu = ({ user, onSettingsClick, onProfileClick, onLogout, className =
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Default user if none provided
-  const defaultUser = {
-    name: 'John Doe',
-    email: 'john.doe@company.com',
-    role: 'Product Manager',
-    avatar: null,
-    initials: 'JD'
-  };
+  if (!user) {
+    return (
+      <div className={`flex items-center ${className}`}>
+        <div className="h-8 w-20 bg-gray-200 rounded-full animate-pulse" />
+      </div>
+    );
+  }
 
-  const currentUser = user || defaultUser;
+  const currentUser = user;
   const userInitials = currentUser.initials || currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase();
 
   // Close dropdown when clicking outside

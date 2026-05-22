@@ -12,7 +12,7 @@ const SprintFilter = ({ selectedSprint, onSprintChange, selectedProject, sprints
 
   // Fallback sprints if API fails
   const fallbackSprints = [
-    { id: 'current', name: 'Current Sprint', description: 'Current Sprint', status: 'active', startDate: new Date().toISOString().split('T')[0], endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] },
+    { id: 'current', name: 'Current Sprint', description: 'Current Sprint', status: 'active', startDate: null, endDate: null },
     { id: 'all-sprints', name: 'All Sprints', description: 'All time view', status: 'all', startDate: null, endDate: null }
   ];
 

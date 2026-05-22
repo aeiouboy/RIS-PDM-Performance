@@ -26,7 +26,7 @@ const TaskDistributionChart = ({
 
   // Only use real data - don't fall back to sample data
   const chartData = data.length > 0 ? data : [];
-  const isUsingSampleData = data.length === 0;
+  const isEmpty = data.length === 0;
   const totalTasks = chartData.length > 0 ? chartData.reduce((sum, item) => sum + (item.count || item.value), 0) : 0;
 
   // Shared tooltip
@@ -140,9 +140,9 @@ const TaskDistributionChart = ({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
             <h3 className="text-lg font-semibold text-gray-900">Work Item Breakdown</h3>
-            {isUsingSampleData && !loading && (
+            {isEmpty && !loading && (
               <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">
-                Sample Data
+                No Data
               </span>
             )}
           </div>
