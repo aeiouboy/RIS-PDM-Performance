@@ -489,22 +489,10 @@ router.put('/profile', async (req, res, next) => {
       updates: { preferences: !!preferences, skills: !!skills },
     });
 
-    // Mock update response
-    const updatedProfile = {
-      ...req.user,
-      preferences: preferences || {
-        theme: 'light',
-        notifications: true,
-        dashboardLayout: 'default',
-        timeZone: 'UTC',
-      },
-      skills: skills || ['JavaScript', 'React', 'Node.js'],
-      lastUpdated: new Date().toISOString(),
-    };
-
-    res.json({
-      data: updatedProfile,
-      message: 'Profile updated successfully',
+    res.status(501).json({
+      error: 'Not implemented',
+      code: 'PROFILE_UPDATE_NOT_IMPLEMENTED',
+      message: 'Profile preference persistence is not yet wired to a database.',
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

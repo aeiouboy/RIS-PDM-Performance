@@ -89,43 +89,8 @@ router.get('/overview',
           endDate
         });
       } catch (azureError) {
-        logger.warn('Azure DevOps API error for overview metrics, returning mock data:', {
-          error: azureError.message,
-          userId: req.user?.id,
-          period,
-          startDate,
-          endDate
-        });
-        
-        // Return mock data for development/demo purposes
-        overview = {
-          period,
-          date_range: {
-            start: startDate,
-            end: endDate
-          },
-          kpis: {
-            total_work_items: 45,
-            completed_work_items: 32,
-            in_progress_work_items: 8,
-            blocked_work_items: 2,
-            completion_rate: 71.1,
-            velocity: 28,
-            cycle_time_avg: 5.2,
-            lead_time_avg: 8.7
-          },
-          team_performance: {
-            total_story_points: 89,
-            completed_story_points: 67,
-            velocity_trend: "increasing",
-            sprint_goal_achievement: 85
-          },
-          quality_metrics: {
-            defect_rate: 2.1,
-            code_coverage: 78.5,
-            review_completion_rate: 95.2
-          }
-        };
+        logger.error('Failed to load overview from Azure DevOps:', azureError);
+        return next(azureError);
       }
 
       const response = {
@@ -319,29 +284,10 @@ router.get('/trends',
         userId: req.user?.id,
       });
 
-      // For now, return structured mock data while we develop historical trends
-      // TODO: Implement historical data analysis from Azure DevOps
-      const trends = {
-        metric,
-        period,
-        range: parseInt(range),
-        data: Array.from({ length: parseInt(range) }, (_, i) => ({
-          period: `${period}-${i + 1}`,
-          value: Math.random() * 100,
-          target: 75,
-          timestamp: new Date(Date.now() - (range - i) * 7 * 24 * 60 * 60 * 1000).toISOString(),
-        })),
-        summary: {
-          current: 78.5,
-          average: 72.3,
-          trend: 'increasing',
-          variance: 8.2,
-        },
-        note: 'Historical trends analysis coming in next phase'
-      };
-
-      res.json({
-        data: trends,
+      res.status(501).json({
+        error: 'Not implemented',
+        code: 'TRENDS_NOT_IMPLEMENTED',
+        message: 'Historical trends analysis is not yet wired to Azure DevOps. Real implementation pending.',
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
