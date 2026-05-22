@@ -310,7 +310,48 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // Server-Sent Events endpoint for dashboard real-time updates
+//
+// Auth note: EventSource (W3C) cannot send custom headers, so the JWT is
+// accepted via ?token=<jwt> query param as a fallback to the Authorization
+// header. Tokens in query strings appear in server access logs; this is an
+// accepted tradeoff because the token is a short-lived JWT (8h TTL per
+// signAppToken), not a long-lived secret, so log exposure is bounded.
 app.get('/api/sse/dashboard', (req, res) => {
+  // --- SSE-specific auth: support both Authorization header and ?token= query param ---
+  let sseToken = null;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    sseToken = authHeader.substring(7);
+  } else if (req.query.token) {
+    sseToken = req.query.token;
+  }
+
+  if (!sseToken) {
+    return res.status(401).json({
+      error: 'Authorization required',
+      code: 'MISSING_TOKEN',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  if (!process.env.JWT_SECRET) {
+    logger.error('JWT_SECRET not configured — cannot verify SSE token');
+    return res.status(500).json({ error: 'Server auth misconfigured' });
+  }
+
+  try {
+    const jwt = require('jsonwebtoken');
+    req.user = jwt.verify(sseToken, process.env.JWT_SECRET, { issuer: 'ris-pdm' });
+  } catch (err) {
+    logger.warn('SSE auth failed', { message: err.message });
+    return res.status(401).json({
+      error: 'Invalid or expired token',
+      code: 'TOKEN_INVALID',
+      timestamp: new Date().toISOString(),
+    });
+  }
+  // --- end SSE auth ---
+
   // Set SSE headers
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',

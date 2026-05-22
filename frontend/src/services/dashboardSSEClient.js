@@ -74,8 +74,13 @@ class DashboardSSEClient {
       // Close existing connection if any
       this.disconnect();
 
-      // Create EventSource connection
-      const sseUrl = `${this.config.serverUrl}${this.config.endpoint}`;
+      // Create EventSource connection.
+      // EventSource cannot send custom headers (W3C API limitation), so the
+      // auth token is appended as ?token=<jwt> for the backend's SSE auth carve-out.
+      const rawToken = localStorage.getItem('authToken') || '';
+      const tokenParam = rawToken ? `token=${encodeURIComponent(rawToken)}` : '';
+      const baseUrl = `${this.config.serverUrl}${this.config.endpoint}`;
+      const sseUrl = tokenParam ? `${baseUrl}?${tokenParam}` : baseUrl;
       this.eventSource = new EventSource(sseUrl, {
         withCredentials: this.config.withCredentials
       });
