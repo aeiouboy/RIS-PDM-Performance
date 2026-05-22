@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { saveAs } from 'file-saver';
+import apiClient from '../lib/apiClient';
 
 const ExportButtons = ({ 
   exportType = 'dashboard', 
@@ -44,23 +45,16 @@ const ExportButtons = ({
         filename = `ris-team-data-${period}-${new Date().toISOString().split('T')[0]}`;
       }
 
-      const baseUrl = process.env.REACT_APP_API_URL || '';
-      const url = `${baseUrl}${endpoint}${queryParams ? '?' + queryParams : ''}`;
-      
-      const response = await fetch(url, {
-        method: 'GET',
+      const url = `${endpoint}${queryParams ? '?' + queryParams : ''}`;
+
+      const response = await apiClient.get(url, {
+        responseType: 'blob',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
           'Accept': format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         }
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Export failed: ${response.status} ${errorText}`);
-      }
-
-      const blob = await response.blob();
+      const blob = response.data;
       const fileExtension = format === 'pdf' ? 'pdf' : 'xlsx';
       saveAs(blob, `${filename}.${fileExtension}`);
 

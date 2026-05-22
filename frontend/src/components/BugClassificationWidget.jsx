@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LabelList } from 'recharts';
+import apiClient from '../lib/apiClient';
 import ChartTooltip from './ChartTooltip';
 import { HEADINGS } from '../utils/copyGlossary';
 
@@ -43,16 +44,8 @@ const BugClassificationWidget = ({
       if (iterationPath) params.append('iterationPath', iterationPath);
 
       const queryString = params.toString() ? `?${params.toString()}` : '';
-      const response = await fetch(`/api/metrics/bug-classification/${encodeURIComponent(productId)}${queryString}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch data: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setDetailedData(data);
+      const response = await apiClient.get(`/api/metrics/bug-classification/${encodeURIComponent(productId)}${queryString}`);
+      setDetailedData(response.data);
     } catch (err) {
       console.error('Error fetching bug classification data:', err);
       setError(err.message);
@@ -72,16 +65,8 @@ const BugClassificationWidget = ({
         ...(selectedEnvironment && { environment: selectedEnvironment })
       });
 
-      const response = await fetch(`/api/metrics/bug-patterns?${params}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch patterns: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setPatternsData(data.patterns);
+      const response = await apiClient.get(`/api/metrics/bug-patterns?${params}`);
+      setPatternsData(response.data.patterns);
       setShowPatterns(true);
     } catch (err) {
       console.error('Error fetching bug patterns:', err);

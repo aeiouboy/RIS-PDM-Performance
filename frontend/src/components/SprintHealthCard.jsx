@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import axios from 'axios';
+import apiClient from '../lib/apiClient';
 import { fmt0 } from '../utils/formatNumber';
 import { STATUS_BADGE } from '../utils/copyGlossary';
 
@@ -25,15 +25,10 @@ const SprintHealthCard = ({ productId, sprintId = 'current', className = '' }) =
     setLoading(true);
     setError(null);
 
-    const headers = {
-      Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
-      'Content-Type': 'application/json',
-    };
-
     Promise.all([
-      axios.get('/api/metrics/sprint-overview', { params: { productId, sprintId }, headers }),
-      axios.get('/api/metrics/velocity-trend', { params: { productId, range: 6 }, headers }),
-      axios.get('/api/metrics/sprint-by-assignee', { params: { productId, sprintId }, headers }),
+      apiClient.get('/api/metrics/sprint-overview', { params: { productId, sprintId } }),
+      apiClient.get('/api/metrics/velocity-trend', { params: { productId, range: 6 } }),
+      apiClient.get('/api/metrics/sprint-by-assignee', { params: { productId, sprintId } }),
     ])
       .then(([ovRes, velRes, asnRes]) => {
         setOverview(ovRes.data?.data ?? null);

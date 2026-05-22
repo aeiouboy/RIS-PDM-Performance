@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import apiClient from '../lib/apiClient';
 import BugClassificationWidget from './BugClassificationWidget';
 import ChartTooltip from './ChartTooltip';
 import { HEADINGS } from '../utils/copyGlossary';
@@ -45,21 +46,8 @@ const TaskDistributionDashboard = ({
         ...(filters.dateRange && { dateRange: `${filters.dateRange.start},${filters.dateRange.end}` })
       });
 
-      // Other dashboard components attach the bearer token explicitly; this
-      // fetch() was sending no auth header at all → endpoint returned 401 and
-      // the chart showed the "Failed to fetch data" error state.
-      const response = await fetch(`/api/metrics/task-distribution-enhanced?${params}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch data: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setDistributionData(data.data);
+      const response = await apiClient.get(`/api/metrics/task-distribution-enhanced?${params}`);
+      setDistributionData(response.data.data);
     } catch (err) {
       console.error('Error fetching task distribution data:', err);
       setError(err.message);

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
+import apiClient from '../lib/apiClient';
 import dashboardSSEClient from '../services/dashboardSSEClient';
 
 const SprintFilter = ({ selectedSprint, onSprintChange, selectedProject, sprints = [], className = '', forceTs }) => {
@@ -37,18 +37,9 @@ const SprintFilter = ({ selectedSprint, onSprintChange, selectedProject, sprints
 
       try {
         console.log('🔄 Fetching sprints from API...', selectedProject ? `for project: ${selectedProject}` : '');
-        const response = await axios.get('/api/metrics/sprints', {
+        const response = await apiClient.get('/api/metrics/sprints', {
           params: selectedProject ? { productId: selectedProject } : {},
-          timeout: 8000, // Reduced from 10 seconds to 8 seconds
-          headers: {
-            'Content-Type': 'application/json',
-            // Every other component on this page sends the bearer token
-            // explicitly (Dashboard.jsx, SprintHealthCard, etc.). When this
-            // request was missing it the endpoint returned 401, axios threw,
-            // and the catch branch surfaced the "Using fallback data" badge —
-            // the sprint dropdown silently showed a synthetic 2-week window.
-            Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`
-          }
+          timeout: 8000,
         });
 
         if (response.data && response.data.success && response.data.data) {

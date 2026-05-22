@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import apiClient from '../lib/apiClient';
 import { fmt0 } from '../utils/formatNumber';
 import { HEADINGS } from '../utils/copyGlossary';
 
@@ -43,13 +43,9 @@ const CurrentSprintByAssignee = ({ productId, sprintId = 'current', className = 
     setLoading(true);
     setError(null);
 
-    axios
+    apiClient
       .get(`/api/metrics/sprint-by-assignee`, {
         params: { productId, sprintId },
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
-          'Content-Type': 'application/json',
-        },
       })
       .then((res) => {
         setData(res.data?.data || null);

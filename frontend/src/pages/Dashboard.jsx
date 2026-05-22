@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import apiClient from '../lib/apiClient';
 import { ExportButtons } from '../components';
 import RealtimeStatus, { LastUpdateIndicator } from '../components/RealtimeStatus';
 import { useRealtimeMetrics } from '../contexts/WebSocketContext';
@@ -44,12 +44,7 @@ const Dashboard = () => {
           ...(forceTs ? { noCache: 'true', _: String(forceTs) } : {})
         });
 
-        const response = await axios.get(`/api/metrics/sprints?${params.toString()}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
-            'Content-Type': 'application/json'
-          }
-        });
+        const response = await apiClient.get(`/api/metrics/sprints?${params.toString()}`);
         if (response.data && response.data.success && response.data.data) {
           setSprintData(response.data.data);
         }
@@ -114,12 +109,8 @@ const Dashboard = () => {
         setFallbackLoading(true);
         setFallbackError(null);
 
-        const response = await axios.get(`/api/metrics/overview${forceTs ? `?noCache=true&_=${forceTs}` : ''}`, {
-          timeout: 10000, // 10 second timeout
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
-            'Content-Type': 'application/json'
-          }
+        const response = await apiClient.get(`/api/metrics/overview${forceTs ? `?noCache=true&_=${forceTs}` : ''}`, {
+          timeout: 10000,
         });
 
         if (response.data && response.data.data) {
@@ -163,12 +154,7 @@ const Dashboard = () => {
         });
         if (forceTs) { params.set('noCache', 'true'); params.set('_', String(forceTs)); }
         
-        const response = await axios.get(`/api/metrics/kpis?${params}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
-            'Content-Type': 'application/json'
-          }
-        });
+        const response = await apiClient.get(`/api/metrics/kpis?${params}`);
         setKpiData(response.data.data);
       } catch (error) {
         console.error('❌ Error fetching KPI data:', error);
@@ -193,12 +179,7 @@ const Dashboard = () => {
         });
         if (forceTs) { params.set('noCache', 'true'); params.set('_', String(forceTs)); }
         
-        const response = await axios.get(`/api/metrics/burndown?${params}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
-            'Content-Type': 'application/json'
-          }
-        });
+        const response = await apiClient.get(`/api/metrics/burndown?${params}`);
         setBurndownData(response.data.data);
       } catch (error) {
         console.error('❌ Error fetching burndown data:', error);
@@ -226,12 +207,7 @@ const Dashboard = () => {
         });
         if (forceTs) { params.set('noCache', 'true'); params.set('_', String(forceTs)); }
         
-        const response = await axios.get(`/api/metrics/velocity-trend?${params}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
-            'Content-Type': 'application/json'
-          }
-        });
+        const response = await apiClient.get(`/api/metrics/velocity-trend?${params}`);
         setVelocityTrendData(response.data.data);
       } catch (error) {
         console.error('❌ Error fetching velocity trend data:', error);

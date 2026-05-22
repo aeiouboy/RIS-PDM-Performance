@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
+import apiClient from '../lib/apiClient';
 import {
   LineChart,
   Line,
@@ -57,17 +58,9 @@ const IndividualPerformance = () => {
           ...(selectedProduct && { productId: normalizeProjectId(selectedProduct) })
         });
 
-        const response = await fetch(`/api/metrics/sprints?${params.toString()}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        if (response.ok) {
-          const result = await response.json();
-          if (result && result.success && result.data) {
-            setSprintData(result.data);
-          }
+        const response = await apiClient.get(`/api/metrics/sprints?${params.toString()}`);
+        if (response.data && response.data.success && response.data.data) {
+          setSprintData(response.data.data);
         }
       } catch (error) {
         console.warn('Could not fetch sprint data for path resolution:', error);
@@ -360,38 +353,13 @@ const IndividualPerformance = () => {
         
         console.log('📊 Team members API URL:', apiUrl);
         
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-        });
-        
+        const response = await apiClient.get(apiUrl);
+
         if (!isMounted) return;
 
-        if (response.status === 429) {
-          // Handle rate limiting with exponential backoff
-          const retryAfter = response.headers.get('Retry-After') || Math.pow(2, retryCount);
-          const delay = Math.min(parseInt(retryAfter) * 1000, 30000); // Max 30 seconds
-          
-          console.warn(`📊 Rate limited (429). Retrying in ${delay/1000}s... (attempt ${retryCount + 1}/3)`);
-          
-          if (retryCount < 2) { // Max 3 attempts
-            retryTimeout = setTimeout(() => {
-              if (isMounted) {
-                fetchTeamMembers(retryCount + 1);
-              }
-            }, delay);
-            return;
-          } else {
-            throw new Error('Too many requests. Please try again later.');
-          }
-        }
-        
-        const data = await response.json();
-        
-        if (response.ok && data.data) {
+        const data = response.data;
+
+        if (data.data) {
           console.log('📊 Team members loaded:', data.data);
           setTeamMembers(data.data.members || []);
           setTeamMembersLoading(false);
@@ -401,6 +369,13 @@ const IndividualPerformance = () => {
           setTeamMembersLoading(false);
         }
       } catch (error) {
+        if (error.response?.status === 429 && retryCount < 2) {
+          const retryAfter = error.response.headers?.['retry-after'] || Math.pow(2, retryCount);
+          const delay = Math.min(parseInt(retryAfter) * 1000, 30000);
+          console.warn(`📊 Rate limited (429). Retrying in ${delay/1000}s... (attempt ${retryCount + 1}/3)`);
+          retryTimeout = setTimeout(() => { if (isMounted) fetchTeamMembers(retryCount + 1); }, delay);
+          return;
+        }
         console.error('Error fetching team members:', error);
         if (isMounted) {
           setTeamMembers([]);
@@ -447,19 +422,8 @@ const IndividualPerformance = () => {
           }
         }
 
-        const response = await fetch(`/api/metrics/individual/${selectedUser}?${params}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        const data = await response.json();
-        
-        if (response.ok) {
-          setIndividualMetrics(data.data);
-        } else {
-          setError(data.error || 'Failed to fetch individual metrics');
-        }
+        const response = await apiClient.get(`/api/metrics/individual/${selectedUser}?${params}`);
+        setIndividualMetrics(response.data.data);
       } catch (error) {
         console.error('Error fetching individual metrics:', error);
         setError('Failed to fetch individual metrics');
