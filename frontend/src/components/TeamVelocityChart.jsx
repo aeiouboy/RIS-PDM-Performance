@@ -3,6 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { fmt, fmt0, pct } from '../utils/formatNumber';
 import ChartTooltip from './ChartTooltip';
 import { STATUS_BADGE, HEADINGS } from '../utils/copyGlossary';
+import InfoTooltip from './InfoTooltip';
 
 const TeamVelocityChart = ({
   data = [],
@@ -212,6 +213,24 @@ const TeamVelocityChart = ({
             )}
           </div>
         </div>
+      </div>
+
+      {/* Plain-language interpretation */}
+      <div className="flex items-start gap-1.5 mb-4 -mt-1">
+        <p className="text-sm text-slate-600">
+          {(() => {
+            if (reliability === null) return 'Not enough sprint history yet to judge velocity reliability.';
+            const r = reliability >= 80 ? 'delivers close to what it commits'
+              : reliability >= 50 ? `delivers about ${reliability}% of what it commits`
+              : 'delivers under half of what it commits';
+            const c = carryover > 30 ? `, and carries ${carryover}% of work over to the next sprint` : '';
+            return `Over recent sprints the team ${r}${c}.`;
+          })()}
+        </p>
+        <InfoTooltip
+          label="What do reliable and carry-over mean?"
+          content="Reliable = delivered ÷ committed across recent sprints (higher is better; Good ≥ 80%). Carry-over = committed work that slipped to the next sprint (lower is better; watch above 30%)."
+        />
       </div>
 
       {/* Chart */}

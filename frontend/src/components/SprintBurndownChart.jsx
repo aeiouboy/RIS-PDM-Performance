@@ -3,6 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { fmt, pct } from '../utils/formatNumber';
 import ChartTooltip from './ChartTooltip';
 import { HEADINGS, getBurndownStatus } from '../utils/copyGlossary';
+import InfoTooltip from './InfoTooltip';
 
 
 const SprintBurndownChart = React.memo(({
@@ -220,6 +221,25 @@ const SprintBurndownChart = React.memo(({
             })()}
           </div>
         </div>
+      </div>
+
+      {/* Plain-language interpretation */}
+      <div className="flex items-start gap-1.5 mb-4 -mt-1">
+        <p className="text-sm text-slate-600">
+          {(() => {
+            const initial = chartData[0]?.actualRemaining || 0;
+            const variance = currentActual - currentIdeal;
+            const ratio = Math.abs(variance) / Math.max(initial, 1);
+            if (initial <= 0) return 'No burndown data yet for this sprint.';
+            if (ratio <= 0.05) return `On track — actual work is tracking close to the ideal line, with ${fmt(currentActual)} ${unitLabel} left.`;
+            if (variance > 0) return `Behind — ${fmt(currentActual)} ${unitLabel} still remain, well above the ideal of ${fmt(currentIdeal)}. Little has burned down.`;
+            return `Ahead — only ${fmt(currentActual)} ${unitLabel} remain, below the ideal of ${fmt(currentIdeal)}.`;
+          })()}
+        </p>
+        <InfoTooltip
+          label="What do the lines mean?"
+          content="Ideal = the straight line if work burned down evenly each day. Actual = work still remaining. Above the ideal line = behind schedule; below = ahead."
+        />
       </div>
 
       {/* Chart */}

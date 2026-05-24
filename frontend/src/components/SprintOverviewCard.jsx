@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import apiClient from '../lib/apiClient';
 import { fmt0 } from '../utils/formatNumber';
 import { HEADINGS, STATUS_BADGE } from '../utils/copyGlossary';
+import InfoTooltip from './InfoTooltip';
 
 /**
  * Sprint Overview Card — a one-glance answer to "where is this sprint?".
@@ -69,7 +70,22 @@ const SprintOverviewCard = ({ productId, sprintId = 'current', className = '' })
       statusText = 'Ahead of plan';
     }
 
-    return { totalItems, completedItems, totalSP, completedSP, workPct, timePct, sprintStarted, sprintFinished, status, statusText };
+    // Plain-language one-liner — answers "is this sprint OK?" without decoding the bars.
+    const carryItems = Math.max(0, totalItems - completedItems);
+    let summary;
+    if (!sprintStarted) {
+      summary = `Sprint hasn't started yet — ${totalItems} items planned.`;
+    } else if (sprintFinished && workPct < 100) {
+      summary = `Sprint is over but only ${workPct}% of work is done — ${carryItems} item${carryItems === 1 ? '' : 's'} will carry over.`;
+    } else if (workPct + 10 < timePct) {
+      summary = `Behind pace — ${timePct}% of the time is gone but only ${workPct}% of work is done.`;
+    } else if (workPct >= timePct + 10) {
+      summary = `Ahead of pace — ${workPct}% done with only ${timePct}% of the time used.`;
+    } else {
+      summary = `On pace — ${workPct}% of work done, ${timePct}% of the sprint elapsed.`;
+    }
+
+    return { totalItems, completedItems, totalSP, completedSP, workPct, timePct, sprintStarted, sprintFinished, status, statusText, summary };
   }, [data]);
 
   return (
@@ -125,8 +141,18 @@ const SprintOverviewCard = ({ productId, sprintId = 'current', className = '' })
             </div>
           </div>
 
+          {/* Plain-language summary */}
+          <p className="text-sm text-slate-600 mt-1">{derived.summary}</p>
+
           {/* Dual progress bars: Work (blue) vs Time (slate) */}
           <div className="mt-4 space-y-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-[10px] uppercase tracking-wide text-slate-500">Work vs Time</span>
+              <InfoTooltip
+                label="What do Work and Time mean?"
+                content="Work = % of items completed. Time = % of the sprint elapsed. When the Work bar trails the Time bar, the sprint is behind pace."
+              />
+            </div>
             <div className="flex items-center gap-3">
               <div className="text-[10px] uppercase tracking-wide text-slate-500 w-12 flex-shrink-0">Work</div>
               <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">

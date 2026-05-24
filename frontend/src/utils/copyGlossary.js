@@ -104,3 +104,55 @@ export function getBurndownStatus(currentActual, currentIdeal, initialActual) {
 export function getKpiStatus(level) {
   return STATUS_BADGE[level] ?? STATUS_BADGE.critical;
 }
+
+/**
+ * Higher-is-better 0–100 score tiers (Sprint Health sub-scores, commitment reliability…).
+ * Good ≥ 80 · Watch 50–79 · Low < 50. Returns a one-word verdict + colour classes.
+ * value null/undefined/NaN → neutral "No data" (never invent a tier for missing data).
+ *
+ * @param {number|null} value
+ * @returns {{key:string,label:string,text_cls:string,bar:string}}
+ */
+export function getScoreTier(value) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return { key: 'na', label: 'No data', text_cls: 'text-slate-400', bar: 'bg-slate-300' };
+  }
+  if (value >= 80) return { key: 'good',  label: 'Good',  text_cls: 'text-emerald-700', bar: 'bg-emerald-500' };
+  if (value >= 50) return { key: 'watch', label: 'Watch', text_cls: 'text-amber-700',   bar: 'bg-amber-500' };
+  return { key: 'low', label: 'Low', text_cls: 'text-rose-700', bar: 'bg-rose-500' };
+}
+
+/** Shared threshold legend shown in ⓘ tooltips for 0–100 scores. */
+export const SCORE_TIER_LEGEND = 'Good ≥ 80 · Watch 50–79 · Low < 50';
+
+/**
+ * Plain-language definitions for the dashboard's hero metrics. Each entry:
+ *  - label:   short display name
+ *  - tooltip: what the metric is + how to read good/bad (rendered in the ⓘ icon)
+ *  - meaning: (value:number) => human one-liner describing the CURRENT value
+ * meaning() assumes a real number — callers must skip/guard when the value is null
+ * so we never fabricate a meaning for missing data.
+ */
+export const METRIC_DEFS = deepFreeze({
+  completion: {
+    label: 'Completion',
+    tooltip: `Share of committed story points finished this sprint. ${SCORE_TIER_LEGEND}.`,
+    meaning: (v) => v >= 80 ? 'most committed work is done'
+      : v >= 50 ? `about ${Math.round(v)}% of committed work is done`
+      : `only ~${Math.round(v)}% of committed work is done`,
+  },
+  reliability: {
+    label: 'Reliability',
+    tooltip: `Average of delivered ÷ committed over the last 6 sprints. ${SCORE_TIER_LEGEND}.`,
+    meaning: (v) => v >= 80 ? 'the team usually delivers what it commits'
+      : v >= 50 ? `the team usually delivers about ${Math.round(v)}% of the plan`
+      : 'the team usually delivers under half of the plan',
+  },
+  balance: {
+    label: 'Balance',
+    tooltip: `How evenly story points are spread across the team — 100 = perfectly even. ${SCORE_TIER_LEGEND}.`,
+    meaning: (v) => v >= 80 ? 'work is evenly spread across the team'
+      : v >= 50 ? 'work is somewhat uneven across the team'
+      : 'work is concentrated on a few people',
+  },
+});

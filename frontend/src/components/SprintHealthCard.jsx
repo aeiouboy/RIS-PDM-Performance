@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import apiClient from '../lib/apiClient';
 import { fmt0 } from '../utils/formatNumber';
-import { STATUS_BADGE } from '../utils/copyGlossary';
+import { STATUS_BADGE, getScoreTier, METRIC_DEFS } from '../utils/copyGlossary';
+import InfoTooltip from './InfoTooltip';
 
 /**
  * Sprint Health Score — composite 0-100 metric for one-glance sprint health.
@@ -88,36 +89,49 @@ const SprintHealthCard = ({ productId, sprintId = 'current', className = '' }) =
       ? STATUS_BADGE.warn
       : STATUS_BADGE.critical;
 
-  // Reason text based on lowest sub-score
-  const lowestKey = (() => {
+  // Plain-language lead sentence: delivery angle (completion + reliability) + balance angle.
+  const leadSentence = (() => {
     const { completion, reliability, balance } = scores;
-    if (completion <= reliability && completion <= balance) return 'completion';
-    if (reliability <= balance) return 'reliability';
-    return 'balance';
+    const delivery =
+      completion < 50 || reliability < 50 ? 'Behind on delivery'
+      : completion < 80 || reliability < 80 ? 'Delivery is on watch'
+      : 'Delivery is on track';
+    const balanceText =
+      balance >= 80 ? 'team balance is healthy'
+      : balance >= 50 ? 'workload is somewhat uneven'
+      : 'workload is concentrated on a few people';
+    return `${delivery}; ${balanceText}.`;
   })();
-  const reasonText =
-    scores.composite >= 75
-      ? 'On track'
-      : lowestKey === 'completion'
-      ? 'Watch carry-over'
-      : lowestKey === 'reliability'
-      ? 'Watch carry-over'
-      : 'Rebalance workload';
 
   const sprintLabel = overview?.sprint ?? sprintId ?? 'Current sprint';
 
-  const SubScoreCell = ({ label, value }) => (
-    <div>
-      <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">{label}</div>
-      <div className="text-lg font-semibold text-slate-900">{fmt0(value)}</div>
-      <div className="h-1 bg-slate-100 rounded-full mt-2 overflow-hidden">
-        <div
-          className="h-full bg-blue-500 rounded-full transition-all duration-500"
-          style={{ width: `${Math.min(100, value)}%` }}
-        />
+  // One metric: name + ⓘ definition, value coloured by tier, one-word verdict,
+  // a tier-coloured bar, and a plain-language "what this means" line.
+  const MetricRow = ({ defKey, value }) => {
+    const def = METRIC_DEFS[defKey];
+    const tier = getScoreTier(value);
+    return (
+      <div className="py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-medium text-slate-700">{def.label}</span>
+            <InfoTooltip content={def.tooltip} label={`What is ${def.label}?`} />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className={`text-lg font-semibold ${tier.text_cls}`}>{fmt0(value)}%</span>
+            <span className={`text-[11px] font-medium ${tier.text_cls}`}>{tier.label}</span>
+          </div>
+        </div>
+        <div className="h-1.5 bg-slate-100 rounded-full mt-1.5 overflow-hidden">
+          <div
+            className={`h-full ${tier.bar} rounded-full transition-all duration-500`}
+            style={{ width: `${Math.min(100, value)}%` }}
+          />
+        </div>
+        <p className="text-xs text-slate-500 mt-1">{def.meaning(value)}</p>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className={`bg-white border border-slate-200 shadow-sm rounded-xl p-6 ${className}`}>
@@ -164,14 +178,17 @@ const SprintHealthCard = ({ productId, sprintId = 'current', className = '' }) =
               {fmt0(scores.composite)}
               <span className="text-2xl text-slate-400 ml-1">/100</span>
             </div>
-            <span className="text-xs text-slate-500 ml-1" title={`${sprintLabel} · ${reasonText}`}>{sprintLabel}</span>
+            <span className="text-xs text-slate-500 ml-1">{sprintLabel}</span>
           </div>
 
-          {/* Sub-scores grid */}
-          <div className="grid grid-cols-3 gap-3 mt-4">
-            <SubScoreCell label="Completion" value={scores.completion} />
-            <SubScoreCell label="Reliability" value={scores.reliability} />
-            <SubScoreCell label="Balance" value={scores.balance} />
+          {/* Plain-language summary */}
+          <p className="text-sm text-slate-600 mt-2">{leadSentence}</p>
+
+          {/* Sub-scores — stacked rows, each with meaning + ⓘ threshold definition */}
+          <div className="mt-3 divide-y divide-slate-100">
+            <MetricRow defKey="completion" value={scores.completion} />
+            <MetricRow defKey="reliability" value={scores.reliability} />
+            <MetricRow defKey="balance" value={scores.balance} />
           </div>
         </>
       )}
