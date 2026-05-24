@@ -419,12 +419,12 @@ const Dashboard = () => {
       </section>
 
 
-      {/* Charts Section - Burndown 60% + Velocity 40% side-by-side above xl */}
+      {/* Charts Section - Burndown 50% + Velocity 50% side-by-side above lg */}
       <section className="mb-8" role="region" aria-label="Sprint progress charts">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Sprint Burndown Chart Card - Glassmorphism (3/5 width) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Sprint Burndown Chart Card - Glassmorphism (1/2 width) */}
           <div
-            className="lg:col-span-3 group relative backdrop-blur-lg bg-white/80 rounded-2xl border border-white/20 shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 overflow-hidden p-6"
+            className="group relative backdrop-blur-lg bg-white/80 rounded-2xl border border-white/20 shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 overflow-hidden p-6"
             style={{
               background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
               boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)'
@@ -441,9 +441,9 @@ const Dashboard = () => {
             />
           </div>
 
-          {/* Velocity Trend Chart Card (2/5 width) */}
+          {/* Velocity Trend Chart Card (1/2 width) */}
           <div
-            className="lg:col-span-2 group relative backdrop-blur-lg bg-white/80 rounded-2xl border border-white/20 shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 overflow-hidden p-6"
+            className="group relative backdrop-blur-lg bg-white/80 rounded-2xl border border-white/20 shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all duration-300 overflow-hidden p-6"
             style={{
               background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
               boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)'
