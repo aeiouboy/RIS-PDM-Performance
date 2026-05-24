@@ -21,8 +21,12 @@ class WebSocketService {
 
     // Configuration
     this.config = {
-      // Use current origin for Vite dev server, which proxies /socket.io to backend (3002)
-      serverUrl: (typeof window !== 'undefined' && window.location?.origin) || 'http://localhost:5173',
+      // Prefer the explicit backend URL (VITE_WEBSOCKET_URL = http://localhost:3002 in
+      // dev .env). In production it's unset, so fall back to the page origin (frontend
+      // and backend are same-origin there). NOTE: the old assumption that Vite proxies
+      // /socket.io is wrong — that proxy is disabled, so in dev we hit :3002 directly
+      // (the backend socket.io server already CORS-allows http://localhost:5174).
+      serverUrl: import.meta.env.VITE_WEBSOCKET_URL || (typeof window !== 'undefined' && window.location?.origin) || 'http://localhost:3002',
       autoConnect: true,
       reconnection: true,
       reconnectionDelay: 1000,

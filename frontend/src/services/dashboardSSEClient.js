@@ -28,8 +28,10 @@ class DashboardSSEClient {
 
     // Configuration - following websocketService.js pattern
     this.config = {
-      // Use Vite proxy for API calls - /api routes are proxied to backend
-      serverUrl: (typeof window !== 'undefined' && window.location?.origin) || 'http://localhost:5173',
+      // Prefer the explicit backend URL (VITE_API_URL = http://localhost:3002 in dev .env);
+      // the SSE route sends Access-Control-Allow-Origin:* so cross-origin EventSource works.
+      // In production VITE_API_URL is unset → same-origin page URL.
+      serverUrl: import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location?.origin) || 'http://localhost:3002',
       endpoint: '/api/sse/dashboard',
       autoConnect: true,
       reconnection: true,

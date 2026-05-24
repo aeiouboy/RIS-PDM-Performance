@@ -318,37 +318,43 @@ if (process.env.NODE_ENV !== 'production') {
 // signAppToken), not a long-lived secret, so log exposure is bounded.
 app.get('/api/sse/dashboard', (req, res) => {
   // --- SSE-specific auth: support both Authorization header and ?token= query param ---
-  let sseToken = null;
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    sseToken = authHeader.substring(7);
-  } else if (req.query.token) {
-    sseToken = req.query.token;
-  }
+  // DEV-ONLY bypass: on localhost (NODE_ENV==='development') skip token verification so
+  // the dev auth bypass works end-to-end. Production reaches the real verification below.
+  if (process.env.NODE_ENV === 'development') {
+    req.user = { sub: 'dev-user', email: 'dev@localhost', name: 'Dev User' };
+  } else {
+    let sseToken = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      sseToken = authHeader.substring(7);
+    } else if (req.query.token) {
+      sseToken = req.query.token;
+    }
 
-  if (!sseToken) {
-    return res.status(401).json({
-      error: 'Authorization required',
-      code: 'MISSING_TOKEN',
-      timestamp: new Date().toISOString(),
-    });
-  }
+    if (!sseToken) {
+      return res.status(401).json({
+        error: 'Authorization required',
+        code: 'MISSING_TOKEN',
+        timestamp: new Date().toISOString(),
+      });
+    }
 
-  if (!process.env.JWT_SECRET) {
-    logger.error('JWT_SECRET not configured — cannot verify SSE token');
-    return res.status(500).json({ error: 'Server auth misconfigured' });
-  }
+    if (!process.env.JWT_SECRET) {
+      logger.error('JWT_SECRET not configured — cannot verify SSE token');
+      return res.status(500).json({ error: 'Server auth misconfigured' });
+    }
 
-  try {
-    const jwt = require('jsonwebtoken');
-    req.user = jwt.verify(sseToken, process.env.JWT_SECRET, { issuer: 'ris-pdm' });
-  } catch (err) {
-    logger.warn('SSE auth failed', { message: err.message });
-    return res.status(401).json({
-      error: 'Invalid or expired token',
-      code: 'TOKEN_INVALID',
-      timestamp: new Date().toISOString(),
-    });
+    try {
+      const jwt = require('jsonwebtoken');
+      req.user = jwt.verify(sseToken, process.env.JWT_SECRET, { issuer: 'ris-pdm' });
+    } catch (err) {
+      logger.warn('SSE auth failed', { message: err.message });
+      return res.status(401).json({
+        error: 'Invalid or expired token',
+        code: 'TOKEN_INVALID',
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
   // --- end SSE auth ---
 
