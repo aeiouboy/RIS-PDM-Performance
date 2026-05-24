@@ -5,7 +5,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import offlineWebsocketService from '../services/websocketServiceOffline';
+import offlineWebsocketService from '../services/websocketService';
 
 const WebSocketContext = createContext();
 

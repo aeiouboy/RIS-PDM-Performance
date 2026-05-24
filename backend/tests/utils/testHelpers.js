@@ -1,5 +1,8 @@
 const request = require('supertest');
-const { jest } = require('@jest/globals');
+// `jest` is provided as a global by Jest (injectGlobals defaults to true);
+// requiring it from '@jest/globals' here collides with the injected global
+// ("Identifier 'jest' has already been declared") and breaks every suite that
+// imports this helper. Use the global directly.
 
 /**
  * Test helper utilities for RIS Performance Dashboard

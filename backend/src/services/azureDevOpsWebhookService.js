@@ -181,8 +181,15 @@ class AzureDevOpsWebhookService extends EventEmitter {
       this.scheduleBatchProcessing();
       
       const processingTime = Date.now() - startTime;
-      this.stats.processingTimes.push(processingTime);
-      
+      // Push an object with a named field so extractRecordedDuration can identify it.
+      // Raw numbers were the fabricated-data bug: a mocked/zero Date.now() pushed 0,
+      // which then produced a spurious "0ms" average instead of the honest not_available
+      // state when no real webhook processing had occurred.
+      this.stats.processingTimes.push({
+        processingTimeMs: processingTime,
+        completedAt: new Date().toISOString()
+      });
+
       // Keep only last 100 processing times for averages
       if (this.stats.processingTimes.length > 100) {
         this.stats.processingTimes = this.stats.processingTimes.slice(-100);
@@ -523,8 +530,8 @@ class AzureDevOpsWebhookService extends EventEmitter {
         await this.cacheService.deletePattern(`workItems:area:${areaPath}:*`);
       }
       
-      // Invalidate general work item list caches
-      await this.cacheService.deletePattern('workItems:*');
+      // Invalidate general work item list caches (served keyspace: ris:cache:workitems:*)
+      await this.cacheService.deletePattern(this.cacheService.servedWorkItemsPattern());
       
       this.logger.debug(`Invalidated caches for work item ${workItemId}`);
       
@@ -602,36 +609,30 @@ class AzureDevOpsWebhookService extends EventEmitter {
    * @returns {Object} Detailed metrics object
    */
   getDetailedMetrics(timeframe = '24h') {
-    const now = Date.now();
     const timeframeMs = this.parseTimeframe(timeframe);
-    const cutoffTime = now - timeframeMs;
-    
-    // Filter processing times by timeframe (create mock data for demo)
-    const recentProcessingTimes = this.generateMockProcessingTimes(timeframe);
-    
-    // Calculate performance metrics
-    const avgProcessingTime = recentProcessingTimes.length > 0
+
+    // Use only recorded runtime durations — never fabricate from eventsProcessed count.
+    const recentProcessingTimes = this.getRecordedProcessingDurations(timeframe);
+    const hasRecordedDurations = recentProcessingTimes.length > 0;
+    const unavailableProcessingTime = this.createUnavailableProcessingTimeMetric();
+
+    const avgProcessingTime = hasRecordedDurations
       ? recentProcessingTimes.reduce((sum, time) => sum + time, 0) / recentProcessingTimes.length
-      : 0;
-    
-    const maxProcessingTime = recentProcessingTimes.length > 0
-      ? Math.max(...recentProcessingTimes)
-      : 0;
-    
-    const minProcessingTime = recentProcessingTimes.length > 0
-      ? Math.min(...recentProcessingTimes)
-      : 0;
-    
-    // Calculate throughput metrics
+      : null;
+
+    const maxProcessingTime = hasRecordedDurations ? Math.max(...recentProcessingTimes) : null;
+    const minProcessingTime = hasRecordedDurations ? Math.min(...recentProcessingTimes) : null;
+
+    // Throughput: events with a recorded duration in the window.
     const eventsInTimeframe = recentProcessingTimes.length;
     const eventsPerHour = timeframeMs > 0 ? (eventsInTimeframe / (timeframeMs / (1000 * 60 * 60))) : 0;
-    
+
     return {
       summary: this.getBasicStatistics(),
       performance: {
-        averageProcessingTime: `${Math.round(avgProcessingTime)}ms`,
-        minProcessingTime: `${minProcessingTime}ms`,
-        maxProcessingTime: `${maxProcessingTime}ms`,
+        averageProcessingTime: hasRecordedDurations ? `${Math.round(avgProcessingTime)}ms` : unavailableProcessingTime,
+        minProcessingTime: hasRecordedDurations ? `${minProcessingTime}ms` : unavailableProcessingTime,
+        maxProcessingTime: hasRecordedDurations ? `${maxProcessingTime}ms` : unavailableProcessingTime,
         totalEventsProcessed: eventsInTimeframe,
         eventsPerHour: Math.round(eventsPerHour * 100) / 100
       },
@@ -665,23 +666,93 @@ class AzureDevOpsWebhookService extends EventEmitter {
   }
   
   /**
-   * Generate mock processing times for demonstration
-   * @param {string} timeframe - Timeframe
-   * @returns {Array} Processing times array
+   * Read actual recorded processing durations within a timeframe.
+   * Only entries that carry a finite non-negative numeric duration field are included.
+   * Entries with no duration field (or undefined/null) are excluded — they must not
+   * silently produce a "0ms" average.
+   * @param {string} timeframe - Timeframe string (e.g. '1h', '24h')
+   * @returns {Array<number>} Processing durations in milliseconds
    */
-  generateMockProcessingTimes(timeframe) {
-    const baseCount = this.stats.eventsProcessed;
-    if (baseCount === 0) return [];
-    
-    // Generate realistic processing times based on actual events
-    const times = [];
-    for (let i = 0; i < baseCount; i++) {
-      // Simulate realistic processing times (50-500ms range)
-      times.push(Math.floor(Math.random() * 450) + 50);
-    }
-    return times;
+  getRecordedProcessingDurations(timeframe = '24h') {
+    const timeframeMs = this.parseTimeframe(timeframe);
+    const cutoffTime = Date.now() - timeframeMs;
+
+    return this.stats.processingTimes
+      .filter((record) => this.isRecordWithinTimeframe(record, cutoffTime))
+      .map((record) => this.extractRecordedDuration(record))
+      .filter((duration) => Number.isFinite(duration) && duration >= 0);
   }
-  
+
+  /**
+   * Check whether a processing record falls within the requested timeframe.
+   * Records without timestamps are retained (already-recorded runtime values).
+   * @param {number|Object} record - Duration entry
+   * @param {number} cutoffTime - Earliest accepted timestamp in ms
+   * @returns {boolean}
+   */
+  isRecordWithinTimeframe(record, cutoffTime) {
+    if (!record || typeof record !== 'object') {
+      return true; // raw numbers are always in scope
+    }
+    const timestamp = record.completedAt || record.processedAt || record.timestamp || record.receivedAt;
+    if (!timestamp) {
+      return true;
+    }
+    const recordedAt = typeof timestamp === 'number' ? timestamp : Date.parse(timestamp);
+    return Number.isFinite(recordedAt) && recordedAt >= cutoffTime;
+  }
+
+  /**
+   * Extract a real recorded duration value from a runtime record.
+   * Returns undefined when no recognised duration field is present.
+   * @param {number|Object} record - Duration entry
+   * @returns {number|undefined}
+   */
+  extractRecordedDuration(record) {
+    if (typeof record === 'number') {
+      return record;
+    }
+    if (!record || typeof record !== 'object') {
+      return undefined;
+    }
+    const fields = ['processingTimeMs', 'durationMs', 'elapsedMs', 'processingDurationMs', 'executionTimeMs'];
+    for (const field of fields) {
+      const value = record[field];
+      if (typeof value === 'number') {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Build the honest not-available sentinel used when no duration data exists.
+   * @returns {Object}
+   */
+  createUnavailableProcessingTimeMetric() {
+    return {
+      status: 'not_available',
+      dataSource: 'runtime_webhook_processing_times',
+      value: null,
+      unit: 'ms',
+      message: 'No recorded webhook processing duration is available'
+    };
+  }
+
+  /**
+   * Calculate average duration from recorded entries only.
+   * Returns null when there are no valid entries.
+   * @param {string} timeframe - Timeframe string
+   * @returns {number|null}
+   */
+  calculateAverageRecordedProcessingTime(timeframe = '24h') {
+    const durations = this.getRecordedProcessingDurations(timeframe);
+    if (durations.length === 0) {
+      return null;
+    }
+    return durations.reduce((sum, d) => sum + d, 0) / durations.length;
+  }
+
   /**
    * Calculate success rate
    * @returns {number} Success rate percentage
@@ -715,9 +786,10 @@ class AzureDevOpsWebhookService extends EventEmitter {
       ? ((this.stats.eventsProcessed / this.stats.eventsReceived) * 100).toFixed(2) + '%'
       : '100.00%';
 
-    const avgProcessingTime = this.stats.processingTimes.length > 0
-      ? Math.round(this.stats.processingTimes.reduce((a, b) => a + b, 0) / this.stats.processingTimes.length)
-      : 0;
+    const avgMs = this.calculateAverageRecordedProcessingTime();
+    const averageProcessingTime = avgMs === null
+      ? this.createUnavailableProcessingTimeMetric()
+      : `${Math.round(avgMs)}ms`;
 
     return {
       service: 'AzureDevOpsWebhookService',
@@ -729,7 +801,7 @@ class AzureDevOpsWebhookService extends EventEmitter {
         eventsFailed: this.stats.eventsFailed,
         invalidSignatures: this.stats.invalidSignatures,
         successRate,
-        averageProcessingTime: `${avgProcessingTime}ms`,
+        averageProcessingTime,
         lastEventTime: this.stats.lastEventTime,
         eventsByType: this.stats.eventsByType,
         queueSize: this.eventQueue.length,
@@ -748,11 +820,11 @@ class AzureDevOpsWebhookService extends EventEmitter {
    * @returns {Object} Service statistics
    */
   getStatistics() {
-    const now = Date.now();
-    const avgProcessingTime = this.stats.processingTimes.length > 0
-      ? this.stats.processingTimes.reduce((a, b) => a + b, 0) / this.stats.processingTimes.length
-      : 0;
-    
+    const avgMs = this.calculateAverageRecordedProcessingTime();
+    const averageProcessingTime = avgMs === null
+      ? this.createUnavailableProcessingTimeMetric()
+      : `${Math.round(avgMs)}ms`;
+
     return {
       service: 'AzureDevOpsWebhookService',
       status: 'healthy',
@@ -762,10 +834,10 @@ class AzureDevOpsWebhookService extends EventEmitter {
         eventsProcessed: this.stats.eventsProcessed,
         eventsFailed: this.stats.eventsFailed,
         invalidSignatures: this.stats.invalidSignatures,
-        successRate: this.stats.eventsReceived > 0 
+        successRate: this.stats.eventsReceived > 0
           ? ((this.stats.eventsProcessed / this.stats.eventsReceived) * 100).toFixed(2) + '%'
           : '100%',
-        averageProcessingTime: Math.round(avgProcessingTime) + 'ms',
+        averageProcessingTime,
         lastEventTime: this.stats.lastEventTime,
         eventsByType: this.stats.eventsByType,
         queueSize: this.eventQueue.length,
@@ -941,10 +1013,11 @@ class AzureDevOpsWebhookService extends EventEmitter {
     const errorRate = this.stats.eventsReceived > 0 
       ? Math.round((this.stats.eventsFailed / this.stats.eventsReceived) * 100) 
       : 0;
-    const avgProcessingTime = this.stats.processingTimes.length > 0
-      ? Math.round(this.stats.processingTimes.reduce((a, b) => a + b, 0) / this.stats.processingTimes.length)
-      : 0;
-    
+    const avgMs = this.calculateAverageRecordedProcessingTime();
+    const avgProcessingTime = avgMs === null
+      ? this.createUnavailableProcessingTimeMetric()
+      : Math.round(avgMs);
+
     return {
       successRate,
       errorRate,

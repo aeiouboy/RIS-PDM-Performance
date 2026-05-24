@@ -1639,10 +1639,12 @@ router.get('/bug-classification/:projectId',
         logger.warn('Primary bug classification fetch failed, using fallback:', primaryError.message);
 
         try {
-          // Use task distribution service which has its own mock fallback for current sprint
+          // Secondary path: derive bug classification from the real task-distribution
+          // service. This computes from actual Azure DevOps work items — it is NOT a
+          // mock. (Misleading "mock fallback" comments removed 2026-05-24.)
           const distribution = await taskDistributionService.calculateTaskDistribution({
             projectName,
-            // Force a reasonable default that enables mock fallback if Azure DevOps is unavailable
+            // Default to the current iteration when no explicit sprint was requested.
             iterationPath: iterationPath || 'current'
           });
 
@@ -1711,10 +1713,12 @@ router.get('/bug-classification/:projectId',
         bugsByEnvironment: environmentData,
         insights: {
           topBugSources: Object.keys((bugClassificationData && bugClassificationData.bugTypes) || {}).slice(0, 5),
+          // Hardcoded resolution patterns ('5 days' / SIT / Prod) removed 2026-05-24 —
+          // these were fabricated. Surface null until real resolution-time analytics are wired.
           resolutionPatterns: {
-            avgResolutionTime: '5 days', // This would be calculated from actual data
-            fastestEnvironment: 'SIT',
-            slowestEnvironment: 'Prod'
+            avgResolutionTime: null,
+            fastestEnvironment: null,
+            slowestEnvironment: null
           },
           recommendations: ((bugClassificationData && bugClassificationData.classificationRate) || 0) < 80 ? 
             ['Improve bug classification rate by training team on custom field usage'] : 

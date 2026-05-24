@@ -75,8 +75,10 @@ class AzureDevOpsApiService {
       const iterations = await this.getProjectIterations(project);
 
       if (!iterations || iterations.length === 0) {
-        logger.warn(`No iterations found for project: ${project}`);
-        return this.getFallbackSprintData(productId);
+        // Honest empty result — do NOT fabricate a "Current Sprint" with synthetic
+        // dates (fabricated fallback removed 2026-05-24).
+        logger.warn(`No iterations found for project: ${project}; returning empty sprint list`);
+        return [];
       }
 
       // Convert Azure DevOps iterations to dashboard format
@@ -98,8 +100,10 @@ class AzureDevOpsApiService {
       return sprints;
 
     } catch (error) {
-      logger.error('Failed to fetch real sprint data:', error);
-      return this.getFallbackSprintData(productId);
+      // On Azure failure, surface an honest empty list rather than fabricated
+      // sprint data (fabricated fallback removed 2026-05-24).
+      logger.error('Failed to fetch real sprint data; returning empty sprint list:', error);
+      return [];
     }
   }
 
@@ -504,20 +508,18 @@ class AzureDevOpsApiService {
   }
 
   /**
-   * Fallback sprint data when API fails
+   * Fabricated sprint-data fallback — REMOVED 2026-05-24.
+   *
+   * This previously returned a synthetic "Current Sprint" with made-up start/end
+   * dates whenever Azure DevOps had no iterations or failed. That masqueraded as
+   * real data. getRealSprintData now returns an honest empty list instead, and no
+   * code path calls this method. The method is retained only so it throws loudly
+   * if it is ever reintroduced into a call path.
    */
   getFallbackSprintData(productId) {
-    logger.warn(`Using fallback sprint data for: ${productId}`);
-
-    return [{
-      id: 'current',
-      name: 'Current Sprint',
-      description: 'Fallback sprint data',
-      status: 'active',
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      path: 'Fallback\\Current Sprint'
-    }];
+    const err = new Error('getFallbackSprintData: fabricated sprint data removed 2026-05-24; return an empty list or surface an error instead');
+    err.code = 'NOT_IMPLEMENTED';
+    throw err;
   }
 
   /**

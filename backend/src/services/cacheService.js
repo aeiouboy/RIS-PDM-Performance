@@ -250,6 +250,50 @@ class CacheService {
   }
 
   /**
+   * Delete cache entries matching a pattern.
+   * Alias for clearPattern — the webhook service invalidates via deletePattern
+   * (e.g. `workItems:*`), so the real singleton must expose this name or those
+   * invalidations throw in production and cron writes never get evicted.
+   * @param {string} pattern - Redis-style glob pattern
+   * @returns {Promise<boolean>} True if any tier was cleared
+   */
+  async deletePattern(pattern) {
+    return this.clearPattern(pattern);
+  }
+
+  /**
+   * Build the exact cache key that metricsCalculator.getWorkItemsForProduct uses for
+   * a given frontendId / sprintId / azureProjectName triple.
+   *
+   * This is the SERVED keyspace (`ris:cache:workitems:*`). Any code that wants to
+   * pre-warm or invalidate what the dashboard actually reads MUST build keys through
+   * this method — not by constructing raw strings — so key-format drift is impossible.
+   *
+   * @param {string} frontendId    - Frontend project ID (e.g. 'Product - OMNIA')
+   * @param {string} sprintId      - Sprint name/ID passed to the query (or 'all')
+   * @param {string} azureProjectName - Azure DevOps project name (from mapFrontendProjectToAzure)
+   * @returns {string} Fully-qualified cache key
+   */
+  buildServedWorkItemsKey(frontendId, sprintId, azureProjectName) {
+    return this.generateKey('workitems', 'product', {
+      project: frontendId,
+      sprint: sprintId || 'all',
+      endpoint: 'getWorkItemsForProduct',
+      azureProject: azureProjectName || frontendId
+    });
+  }
+
+  /**
+   * The Redis glob pattern that matches EVERY served work-items key regardless of
+   * project or sprint. Use this in webhook invalidation so the real `ris:cache:*`
+   * namespace is cleared rather than the raw `workItems:*` glob which never matches.
+   * @returns {string} Pattern string
+   */
+  servedWorkItemsPattern() {
+    return 'ris:cache:workitems:*';
+  }
+
+  /**
    * Clear cache entries for specific project+sprint combination
    */
   async clearFilterCache(project, sprint) {

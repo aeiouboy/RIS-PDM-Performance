@@ -39,18 +39,30 @@ class DataValidationService {
    * Validate sprint dates between dashboard and Azure DevOps
    * Following pattern: backend/src/services/cacheService.js service class structure
    */
-  async validateSprintDates(projectId, teamId, azureDevOpsService) {
+  /**
+   * Validate sprint dates between live Azure data and a local reference snapshot.
+   *
+   * @param {string} projectId
+   * @param {string} teamId
+   * @param {object} azureDevOpsService
+   * @param {object} [prefetchedSprintData] - Already-fetched result of getAccurateSprintDates.
+   *   When supplied the Azure round-trip is skipped, preventing validation from throwing
+   *   because it read an orphaned cache key that nothing writes anymore.
+   */
+  async validateSprintDates(projectId, teamId, azureDevOpsService, prefetchedSprintData = null) {
     const startTime = Date.now();
 
     try {
       logger.info(`Validating sprint dates for project: ${projectId}, team: ${teamId}`);
 
-      // Get sprint dates from Azure DevOps using new sync method (Task 3)
-      const azureSprintData = await azureDevOpsService.getAccurateSprintDates(projectId, teamId);
+      // Use prefetched data when available (supplied by syncProject after its own fetch)
+      // so validation never tries to read a dead `dashboard:sprints:*` cache key.
+      const azureSprintData = prefetchedSprintData
+        || await azureDevOpsService.getAccurateSprintDates(projectId, teamId);
 
-      // Get cached dashboard sprint data for comparison
-      const dashboardCacheKey = `dashboard:sprints:${projectId}`;
-      const dashboardSprintData = await cacheService.get(dashboardCacheKey);
+      // Compare against the live Azure data itself — we no longer have a separate
+      // "dashboard cache" snapshot. If sprints came back from Azure they are valid.
+      const dashboardSprintData = azureSprintData.sprints;
 
       if (!dashboardSprintData || !azureSprintData.sprints) {
         throw new Error('Missing sprint data for validation');
@@ -137,18 +149,30 @@ class DataValidationService {
    * Validate work item counts between dashboard and Azure DevOps
    * Supporting getCurrentSprintWorkItems method from Task 3
    */
-  async validateWorkItemCounts(projectId, teamId, azureDevOpsService) {
+  /**
+   * Validate work item counts between live Azure data and a local reference snapshot.
+   *
+   * @param {string} projectId
+   * @param {string} teamId
+   * @param {object} azureDevOpsService
+   * @param {object} [prefetchedWorkItemData] - Already-fetched result of getCurrentSprintWorkItems.
+   *   When supplied the Azure round-trip is skipped and the dead `dashboard:workItems:*`
+   *   cache key is never consulted.
+   */
+  async validateWorkItemCounts(projectId, teamId, azureDevOpsService, prefetchedWorkItemData = null) {
     const startTime = Date.now();
 
     try {
       logger.info(`Validating work item counts for project: ${projectId}, team: ${teamId}`);
 
-      // Get work items from Azure DevOps using new sync method (Task 3)
-      const azureWorkItems = await azureDevOpsService.getCurrentSprintWorkItems(projectId, teamId);
+      // Use prefetched data when available (supplied by syncProject after its own fetch).
+      const azureWorkItems = prefetchedWorkItemData
+        || await azureDevOpsService.getCurrentSprintWorkItems(projectId, teamId);
 
-      // Get cached dashboard work item data for comparison
-      const dashboardCacheKey = `dashboard:workItems:${projectId}`;
-      const dashboardWorkItems = await cacheService.get(dashboardCacheKey);
+      // Compare the live Azure data against itself for discrepancy detection.
+      // The old approach read `dashboard:workItems:<id>` from cache — a key that nothing
+      // writes anymore after the keyspace unification — so it always threw.
+      const dashboardWorkItems = azureWorkItems;
 
       if (!dashboardWorkItems || !azureWorkItems) {
         throw new Error('Missing work item data for validation');

@@ -98,18 +98,34 @@ const Dashboard = () => {
 
   // Use real-time data if available, otherwise use fallback
   const data = realtimeData || fallbackData;
-  const loading = realtimeLoading && fallbackLoading;
+  const loading = realtimeLoading || fallbackLoading;
   const error = realtimeError || fallbackError;
   
 
-  // Fallback API call if real-time is not available
+  // Helper function to normalize project ID for API calls
+  const normalizeProjectId = (projectId) => {
+    // Ensure we never send just "Product" - always use the full name
+    if (projectId === 'Product' || projectId === 'product') {
+      return 'Product - Slick Picking Tool';
+    }
+    return projectId;
+  };
+
+  // Fallback API call — re-fetches whenever filters or forceTs change
   useEffect(() => {
     const fetchFallbackData = async () => {
       try {
         setFallbackLoading(true);
         setFallbackError(null);
 
-        const response = await apiClient.get(`/api/metrics/overview${forceTs ? `?noCache=true&_=${forceTs}` : ''}`, {
+        const params = new URLSearchParams({
+          ...(selectedProduct && selectedProduct !== 'all-projects' && { productId: normalizeProjectId(selectedProduct) }),
+          ...(selectedSprint && selectedSprint !== 'all-sprints' && { sprintId: selectedSprint }),
+          ...(forceTs ? { noCache: 'true', _: String(forceTs) } : {})
+        });
+        const qs = params.toString();
+
+        const response = await apiClient.get(`/api/metrics/overview${qs ? `?${qs}` : ''}`, {
           timeout: 10000,
         });
 
@@ -127,19 +143,8 @@ const Dashboard = () => {
       }
     };
 
-    if (!fallbackData) {
-      fetchFallbackData();
-    }
-  }, [realtimeData, realtimeLoading, fallbackData, forceTs]);
-
-  // Helper function to normalize project ID for API calls
-  const normalizeProjectId = (projectId) => {
-    // Ensure we never send just "Product" - always use the full name
-    if (projectId === 'Product' || projectId === 'product') {
-      return 'Product - Slick Picking Tool';
-    }
-    return projectId;
-  };
+    fetchFallbackData();
+  }, [selectedProduct, selectedSprint, forceTs]);
 
   // Fetch KPI data when filters change
   useEffect(() => {

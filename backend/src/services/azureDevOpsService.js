@@ -368,7 +368,9 @@ class AzureDevOpsService {
       if (error.message.includes('TF51011') && error.message.includes('iteration path does not exist') && resolvedIterationPath) {
         logger.warn(`Iteration path not found: ${resolvedIterationPath} (original: ${iterationPath}). Using fallback query without iteration filter.`);
         
-        // Special case: For current sprint patterns, return mock sprint data instead of all project data
+        // For current-sprint patterns we must NOT silently fall back to unfiltered
+        // project-wide data (that would masquerade as sprint data). Mock fallback was
+        // removed 2026-05-19; surface an honest NOT_IMPLEMENTED error instead.
         const isCurrentSprint = (
           resolvedIterationPath?.includes('Delivery') || 
           resolvedIterationPath?.includes('Sprint') || 
@@ -569,12 +571,15 @@ class AzureDevOpsService {
 
         const response = await this.makeRequest(endpoint);
       
-        // TEMP FIX: Skip iteration enrichment to prevent infinite loop
-        // TODO: Fix the iteration resolver loop issue
+        // Iteration enrichment (per-iteration work item counts) is intentionally
+        // skipped here to avoid an iteration-resolver recursion loop. We expose
+        // workItemCount as null (= "not computed") rather than 0, so consumers do
+        // not mistake an un-enriched iteration for one that genuinely has zero items.
+        // Placeholder 0 removed 2026-05-24.
         const enrichedIterations = response.value.map((iteration) => ({
           ...iteration,
-          workItemCount: 0, // Placeholder
-          workItems: [] // Placeholder
+          workItemCount: null, // not computed (enrichment skipped); not a real zero
+          workItems: [] // not loaded here; fetched on demand elsewhere
         }));
 
         const result = {

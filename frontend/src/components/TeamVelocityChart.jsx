@@ -118,7 +118,7 @@ const TeamVelocityChart = ({
                 key={i}
                 className="bg-slate-200 rounded-t animate-pulse"
                 style={{
-                  height: `${Math.random() * 80 + 20}%`,
+                  height: `${[30, 60, 45, 75, 50, 65][i] ?? 50}%`,
                   width: '16px',
                   animationDelay: `${i * 0.15}s`
                 }}
@@ -350,4 +350,4 @@ const TeamVelocityChart = ({
   );
 };
 
-export default TeamVelocityChart;
+export default React.memo(TeamVelocityChart);

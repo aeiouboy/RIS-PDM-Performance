@@ -12,12 +12,16 @@ const logger = require('../../utils/logger');
 const AzureDevOpsService = require('../services/azureDevOpsService');
 const dataValidationService = require('../services/dataValidationService');
 const cacheService = require('../services/cacheService');
-// Project mapping functions available if needed: require('../config/projectMapping')
+const { mapFrontendProjectToAzure } = require('../config/projectMapping');
 
 class BackgroundSyncJob {
   constructor() {
     this.isRunning = false;
     this.lastRunTime = null;
+    // Per-project last successful sync timestamps (ms epoch).
+    // Backs the `risp_background_sync_last_run_timestamp{project}` style gauge so a
+    // stale sync (e.g. cron silently broken) is observable instead of failing silently.
+    this.lastRunTimestamps = {};
     this.syncStats = {
       totalRuns: 0,
       successfulRuns: 0,
@@ -27,17 +31,24 @@ class BackgroundSyncJob {
       projectsSynced: 0
     };
 
-    // Projects to sync - following PRP project mapping patterns
+    // Projects to sync - frontendId/azureProject/team must match config/projectMapping.js
+    // OMNIA is the PRIMARY project and MUST be synced first (it was previously omitted,
+    // which is why the dashboard's main project never refreshed — the "unloaded data" bug).
     this.projectsToSync = [
       {
+        frontendId: 'Product - OMNIA',
+        azureProject: 'Product - OMNIA',
+        team: 'Product - OMNIA Team'
+      },
+      {
         frontendId: 'Product - Partner Management Platform',
-        azureProject: 'Product',
+        azureProject: 'Product - Partner Management Platform',
         team: 'PMP Developer Team'
       },
       {
         frontendId: 'Product - Data as a Service',
-        azureProject: 'Product',
-        team: 'Data Team'
+        azureProject: 'Product - Data as a Service',
+        team: 'Product - Data as a Service Team'
       }
     ];
 
@@ -64,11 +75,11 @@ class BackgroundSyncJob {
         await this.executeSyncCycle();
       }, {
         scheduled: true,
-        timezone: "America/New_York", // Adjust timezone as needed
+        timezone: "Asia/Bangkok", // Team is in Bangkok — keeps the 8AM-6PM business-hours window aligned with the actual workday
         runOnInit: false // Don't run immediately on start
       });
 
-      logger.info(`Background sync job scheduled: ${this.cronExpression} (every 15 min, 8AM-6PM weekdays)`);
+      logger.info(`Background sync job scheduled: ${this.cronExpression} (every 15 min, 8AM-6PM weekdays, Asia/Bangkok)`);
 
       // Optional: Run initial sync if needed
       const runInitialSync = process.env.RUN_INITIAL_SYNC === 'true';
@@ -167,36 +178,45 @@ class BackgroundSyncJob {
       const azureService = new AzureDevOpsService();
       await azureService.initialize();
 
-      // Step 1: Sync work items data using Task 3 method
+      // Resolve the Azure project name exactly as metricsCalculator does, so the served
+      // cache key we build here is byte-for-byte identical to what the dashboard reads.
+      const azureProjectName = mapFrontendProjectToAzure(frontendId) || frontendId;
+
+      // Step 1: Fetch sprint dates to identify the active sprint name/id used as key.
+      const sprintData = await azureService.getAccurateSprintDates(azureProject, team);
+      const sprintId = this.resolveActiveSprintId(sprintData.sprints);
+      const syncedAt = new Date().toISOString();
+
+      // Step 2: Fetch work items using the same query shape as getCurrentSprintWorkItems.
+      // We store the classified summary under the SERVED keyspace so the next dashboard
+      // request finds a cache hit instead of hitting Azure again.
       const workItemsData = await azureService.getCurrentSprintWorkItems(azureProject, team);
 
-      // Cache the work items data for dashboard
-      const workItemsCacheKey = `dashboard:workItems:${frontendId}`;
-      await cacheService.set(workItemsCacheKey, workItemsData, {
-        ttl: 5 * 60 * 1000 // 5 minutes TTL for work items
+      // Build the exact key that metricsCalculator.getWorkItemsForProduct writes so the
+      // dashboard read-path (ris:cache:workitems:*) is pre-warmed by the cron.
+      const servedKey = cacheService.buildServedWorkItemsKey(frontendId, sprintId, azureProjectName);
+      await cacheService.set(servedKey, { ...workItemsData, lastSync: syncedAt }, {
+        ttl: 300 // 5 minutes — matches metricsCalculator TTL
       });
+      logger.info(`Pre-warmed served cache key for ${frontendId}: ${servedKey}`);
 
-      // Step 2: Sync sprint dates using Task 3 method
-      const sprintData = await azureService.getAccurateSprintDates(azureProject, team);
-
-      // Cache the sprint data for dashboard
-      const sprintsCacheKey = `dashboard:sprints:${frontendId}`;
-      await cacheService.set(sprintsCacheKey, sprintData.sprints, {
-        ttl: 30 * 60 * 1000 // 30 minutes TTL for sprints
-      });
-
-      // Step 3: Run data validation using Task 4 service
+      // Step 3: Run data validation passing the already-fetched data directly — no cache
+      // round-trip — so validation never reads orphaned keys that nothing writes anymore.
       const sprintValidation = await dataValidationService.validateSprintDates(
-        azureProject, team, azureService);
+        azureProject, team, azureService, sprintData);
       const workItemValidation = await dataValidationService.validateWorkItemCounts(
-        azureProject, team, azureService);
+        azureProject, team, azureService, workItemsData);
 
       // Update sync success status
       dataValidationService.updateSyncStats(true);
 
+      // Stamp per-project last successful sync time (backs the staleness gauge/alert).
+      this.lastRunTimestamps[frontendId] = Date.now();
+
       const result = {
         project: frontendId,
         success: true,
+        sprintId,
         workItems: {
           total: workItemsData.total,
           bugs: workItemsData.bugs,
@@ -225,6 +245,41 @@ class BackgroundSyncJob {
         timestamp: new Date().toISOString()
       };
     }
+  }
+
+  /**
+   * Resolve the active sprint id from a list of sprints so work items can be cached
+   * under a stable, surgical-invalidation-friendly key.
+   * Falls back to 'current' when no active sprint can be determined.
+   * @param {Array} sprints - Sprint list from getAccurateSprintDates
+   * @returns {string} Sprint id (or 'current' fallback)
+   */
+  resolveActiveSprintId(sprints) {
+    if (!Array.isArray(sprints) || sprints.length === 0) {
+      return 'current';
+    }
+
+    // Prefer a sprint explicitly marked current/active by the resolver.
+    const active = sprints.find(s => {
+      const status = (s.status || '').toLowerCase();
+      return status === 'current' || status === 'active';
+    });
+    if (active && active.id) {
+      return active.id;
+    }
+
+    // Fallback: a sprint whose date range contains today.
+    const now = Date.now();
+    const byDate = sprints.find(s => {
+      const start = s.startDate ? Date.parse(s.startDate) : NaN;
+      const end = s.endDate ? Date.parse(s.endDate) : NaN;
+      return Number.isFinite(start) && Number.isFinite(end) && start <= now && end >= now;
+    });
+    if (byDate && byDate.id) {
+      return byDate.id;
+    }
+
+    return sprints[0].id || 'current';
   }
 
   /**
@@ -307,8 +362,11 @@ class BackgroundSyncJob {
       isRunning: this.isRunning,
       lastRunTime: this.lastRunTime,
       schedule: this.cronExpression,
+      timezone: 'Asia/Bangkok',
       stats: { ...this.syncStats },
       projectsToSync: this.projectsToSync.map(p => p.frontendId),
+      // Per-project last successful sync timestamps (ms epoch) — observability for stale syncs.
+      lastRunTimestamps: { ...this.lastRunTimestamps },
       nextRunTime: this.cronJob?.nextDates()?.toString() || null,
       uptime: process.uptime()
     };

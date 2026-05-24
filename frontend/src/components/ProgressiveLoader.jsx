@@ -170,7 +170,7 @@ export const ProgressiveChart = React.memo(({
                 key={barIndex}
                 className="bg-gray-200 rounded-t flex-1"
                 style={{
-                  height: `${Math.random() * 70 + 30}%`,
+                  height: `${[30, 55, 70, 45, 80, 60, 40, 65][barIndex] ?? 50}%`,
                   animationDelay: `${(index * 8 + barIndex) * 0.1}s`
                 }}
               ></div>

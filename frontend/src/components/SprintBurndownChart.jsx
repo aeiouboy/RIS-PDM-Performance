@@ -123,7 +123,7 @@ const SprintBurndownChart = React.memo(({
                 key={i}
                 className="bg-slate-200 rounded-t animate-pulse"
                 style={{
-                  height: `${Math.random() * 80 + 20}%`,
+                  height: `${[20, 45, 65, 80, 55, 70, 40, 30][i] ?? 50}%`,
                   width: '12px',
                   animationDelay: `${i * 0.1}s`
                 }}

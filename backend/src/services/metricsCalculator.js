@@ -156,7 +156,8 @@ class MetricsCalculatorService {
         performance: {
           velocity: {
             current: velocity.storyPoints,
-            target: sprintInfo?.capacity || 50.0,
+            // Real capacity from Azure sprint info; null (not a fabricated 50.0) when absent.
+            target: sprintInfo?.capacity ?? null,
             trend: await this.getVelocityTrend(productId),
             history: await this.getVelocityHistory(productId),
           },
@@ -384,7 +385,8 @@ class MetricsCalculatorService {
     
     return {
       deliveryPredictability: this.calculateDeliveryPredictability(workItems, currentSprint),
-      teamSatisfaction: await this.getTeamSatisfaction() || 7.6,
+      // getTeamSatisfaction returns an honest status contract; fabricated 7.6 fallback removed 2026-05-24
+      teamSatisfaction: await this.getTeamSatisfaction(),
       codeQuality: this.calculateQualityScore(quality),
       defectEscapeRate: this.calculateDefectEscapeRate(quality),
       cycleTime: parseFloat(await this.calculateAverageCycleTime(workItems)),
@@ -457,8 +459,11 @@ class MetricsCalculatorService {
   async generateAlerts(workItems, kpis) {
     const alerts = [];
     
-    // Check for low velocity
-    if (kpis.deliveryPredictability < 70) {
+    // Check for low velocity.
+    // deliveryPredictability is null when there is no sprint commitment data
+    // (fabricated 78.9 default was removed). `null < 70` is true in JS, which would
+    // fire a spurious "below target" alert on every overview call — guard against it.
+    if (kpis.deliveryPredictability != null && kpis.deliveryPredictability < 70) {
       alerts.push({
         type: 'warning',
         message: 'Delivery predictability is below target (70%)',
@@ -499,8 +504,10 @@ class MetricsCalculatorService {
    * @private
    */
   calculateDeliveryPredictability(workItems, sprintInfo) {
-    if (!sprintInfo) return 78.9; // Default value
-    
+    // Without sprint commitment data there is no real predictability to report.
+    // Fabricated default (78.9) removed 2026-05-24.
+    if (!sprintInfo) return null;
+
     const committed = sprintInfo.workItemCount || workItems.length;
     const completed = workItems.filter(wi => ['Closed', 'Done', 'Resolved', 'Deploy'].includes(wi.state)).length;
     
@@ -512,7 +519,9 @@ class MetricsCalculatorService {
    * @private
    */
   calculateDefectEscapeRate(qualityMetrics) {
-    return parseFloat(qualityMetrics.bugToTaskRatio) * 10 || 2.1;
+    // Derived from real bug-to-task ratio; 0 when no bugs/tasks. Fabricated 2.1 fallback removed 2026-05-24.
+    const ratio = parseFloat(qualityMetrics?.bugToTaskRatio);
+    return Number.isFinite(ratio) ? ratio * 10 : 0;
   }
 
   async calculateAverageCycleTime(workItems) {
@@ -522,7 +531,8 @@ class MetricsCalculatorService {
       item.closedDate
     );
 
-    if (completedItems.length === 0) return 4.2;
+    // No completed items with timestamps → no real cycle time. Fabricated 4.2 removed 2026-05-24.
+    if (completedItems.length === 0) return 0;
 
     const totalCycleTime = completedItems.reduce((sum, item) => {
       const created = new Date(item.createdDate);
@@ -534,13 +544,17 @@ class MetricsCalculatorService {
   }
 
   async calculateLeadTime(workItems) {
-    // Lead time calculation would require additional data from Azure DevOps
-    // For now, return a reasonable default
-    return 8.7;
+    // Lead time requires backlog-entry / activation timestamps not reliably present
+    // on the batch work-item payload. Fabricated 8.7 default removed 2026-05-24 —
+    // return null until the required Azure DevOps revision data is wired.
+    return null;
   }
 
   calculateThroughput(velocity) {
-    return parseFloat(velocity.averageStoryPointsPerTask) * 10 || 23.4;
+    // Derived from real average story points per task; 0 when unavailable.
+    // Fabricated 23.4 fallback removed 2026-05-24.
+    const avg = parseFloat(velocity?.averageStoryPointsPerTask);
+    return Number.isFinite(avg) ? avg * 10 : 0;
   }
 
   categorizeWorkItems(workItems) {
@@ -1120,8 +1134,9 @@ class MetricsCalculatorService {
   }
 
   calculateCodeQuality(bugs, tasks) {
-    if (tasks.length === 0) return 8.0; // Default good quality
-    
+    // No tasks → no measured quality. Fabricated "default good quality" 8.0 removed 2026-05-24.
+    if (tasks.length === 0) return null;
+
     const bugRatio = bugs.length / tasks.length;
     let quality = 10;
     
@@ -1135,8 +1150,10 @@ class MetricsCalculatorService {
   calculateUserQualityScore(qualityMetrics) {
     const bugScore = qualityMetrics.bugsFixed > qualityMetrics.bugsCreated ? 2 : -1;
     const ratioScore = qualityMetrics.bugRatio < 0.1 ? 8 : 6;
-    const codeScore = parseFloat(qualityMetrics.codeQuality);
-    
+    // codeQuality can be null when there were no tasks to measure (see calculateCodeQuality).
+    const parsedCode = parseFloat(qualityMetrics.codeQuality);
+    const codeScore = Number.isFinite(parsedCode) ? parsedCode : 0;
+
     return Math.min(10, Math.max(1, bugScore + ratioScore + codeScore * 0.1)).toFixed(1);
   }
 
@@ -1183,21 +1200,30 @@ class MetricsCalculatorService {
     const teamMetrics = await this.getTeamAverageMetrics();
     const userMetrics = this.calculateUserPerformanceMetrics(userWorkItems);
     
+    // teamMetrics comes from getTeamAverageMetrics() (which currently throws an
+    // honest NOT_IMPLEMENTED error). Fabricated fallbacks (75.5 / 3.2 / 5.8) removed
+    // 2026-05-24 — use the real team average or null, never invented numbers.
     return {
       taskCompletion: {
         user: userMetrics.completionRate,
-        teamAverage: teamMetrics.averageCompletionRate || 75.5,
-        percentile: this.calculatePercentile(userMetrics.completionRate, teamMetrics.averageCompletionRate || 75.5)
+        teamAverage: teamMetrics.averageCompletionRate ?? null,
+        percentile: teamMetrics.averageCompletionRate != null
+          ? this.calculatePercentile(userMetrics.completionRate, teamMetrics.averageCompletionRate)
+          : null
       },
       velocity: {
         user: userMetrics.averageVelocity,
-        teamAverage: teamMetrics.averageVelocity || 3.2,
-        percentile: this.calculatePercentile(userMetrics.averageVelocity, teamMetrics.averageVelocity || 3.2)
+        teamAverage: teamMetrics.averageVelocity ?? null,
+        percentile: teamMetrics.averageVelocity != null
+          ? this.calculatePercentile(userMetrics.averageVelocity, teamMetrics.averageVelocity)
+          : null
       },
       cycleTime: {
         user: userMetrics.averageCycleTime,
-        teamAverage: teamMetrics.averageCycleTime || 5.8,
-        percentile: this.calculatePercentile(userMetrics.averageCycleTime, teamMetrics.averageCycleTime || 5.8, true) // Lower is better
+        teamAverage: teamMetrics.averageCycleTime ?? null,
+        percentile: teamMetrics.averageCycleTime != null
+          ? this.calculatePercentile(userMetrics.averageCycleTime, teamMetrics.averageCycleTime, true) // Lower is better
+          : null
       }
     };
   }
@@ -1279,8 +1305,10 @@ class MetricsCalculatorService {
   }
 
   // Placeholder methods for data that requires additional Azure DevOps API calls
-  async getTotalProducts() { return 5; }
-  async getActiveProjects() { return 12; }
+  // Hardcoded counts (5 / 12) removed 2026-05-24 — these masqueraded as real
+  // org-wide totals. Return null until a real project/product enumeration is wired.
+  async getTotalProducts() { return null; }
+  async getActiveProjects() { return null; }
   async getTestCoverage() { 
     return {
       value: 'Processing...',
@@ -1313,8 +1341,11 @@ class MetricsCalculatorService {
       dataSource: 'pending_survey_integration'
     };
   }
-  async getVelocityTrend() { return 'increasing'; }
-  async getVelocityHistory() { return [42.1, 44.5, 47.2, 45.8]; }
+  // Hardcoded velocity trend ('increasing') and history ([42.1, 44.5, 47.2, 45.8])
+  // removed 2026-05-24 — these were fabricated. Real values require querying
+  // historical sprint velocities from Azure DevOps. Return null/empty honestly.
+  async getVelocityTrend() { return null; }
+  async getVelocityHistory() { return []; }
   async getUserTestCoverage() { 
     return {
       value: 'Processing...',
@@ -1325,7 +1356,10 @@ class MetricsCalculatorService {
   }
 
   calculateCommitmentReliability(sprintMetrics) {
-    return parseFloat(sprintMetrics.sprintProgress) || 78.9;
+    // sprintProgress is real (derived from work items). When it is absent we must
+    // not invent a plausible number (previously hardcoded 78.9 — removed 2026-05-24).
+    const progress = parseFloat(sprintMetrics?.sprintProgress);
+    return Number.isFinite(progress) ? progress : null;
   }
 
   calculateProductivityScore(teamPerformance) {
@@ -1334,7 +1368,17 @@ class MetricsCalculatorService {
   }
 
   calculateUtilization(teamPerformance) {
-    return 85.4; // Placeholder - would require capacity data
+    // Real utilization requires per-member capacity data from Azure DevOps
+    // (work/teamsettings/iterations/{id}/capacities). The teamPerformance object
+    // aggregated from work items does not carry capacity, so we surface an honest
+    // not_available contract instead of fabricating a plausible percentage.
+    // mock magic-number (85.4) removed 2026-05-24
+    return {
+      value: null,
+      status: 'not_available',
+      message: 'Utilization requires Azure DevOps team capacity data which is not wired into this aggregation.',
+      dataSource: 'not_implemented'
+    };
   }
 
   identifyRisks(sprintMetrics, qualityMetrics) {
@@ -1427,7 +1471,7 @@ class MetricsCalculatorService {
       // A2: Build completed-states set based on resolvedAsCompleted flag
       const completedStates = this._getCompletedStates(resolvedAsCompleted);
 
-      // Calculate P/L metrics (mock implementation)
+      // P/L metrics — returns an honest not_available contract (no real financial source wired)
       const pl = await this.calculatePLMetrics(filteredItems, productId);
 
       // Calculate velocity metrics (completed story points)
@@ -1441,7 +1485,7 @@ class MetricsCalculatorService {
       // Calculate bug metrics
       const bugs = this.calculateBugMetrics(workItems); // bugs always use full set
       
-      // Calculate satisfaction metrics (mock implementation)
+      // Satisfaction metrics — returns an honest not_available contract (no real survey source wired)
       const satisfaction = await this.calculateSatisfactionMetrics(workItems);
 
       const kpis = {
@@ -1521,6 +1565,13 @@ class MetricsCalculatorService {
       
       // Get sprint iteration data
       const sprintData = await this.getSprintData(sprintId, productId);
+      // getSprintData now returns null when no real Azure iteration resolves (fabricated
+      // "Delivery 13/6" fallback was removed). generateBurndownChart dereferences
+      // sprintData.startDate, so guard here: fail honestly rather than crash with a
+      // cryptic TypeError, and never fabricate a sprint window.
+      if (!sprintData || !sprintData.startDate) {
+        throw new Error(`Sprint date range not available for ${productId}/${sprintId}; cannot compute burndown without a real iteration`);
+      }
       const sprintDuration = this.calculateSprintDuration(sprintData);
       
       // If no work items found, try real API service first, then fallback to mock data
@@ -1777,12 +1828,14 @@ class MetricsCalculatorService {
   // Helper methods for new calculations
 
   async calculatePLMetrics(workItems, productId) {
+    // Honest contract: no fabricated P/L. Real financial data source is not wired.
     return {
       value: null,
-      trend: 0,
+      trend: null,
       trendValue: '—',
+      target: null,
       status: 'not_available',
-      message: 'P/L metric not yet wired to a real data source',
+      message: 'P/L metric is not implemented until a real financial data source is wired.',
       dataSource: 'not_implemented',
     };
   }
@@ -1810,12 +1863,14 @@ class MetricsCalculatorService {
   }
 
   async calculateSatisfactionMetrics(workItems) {
+    // Honest contract: no fabricated satisfaction. Real survey data source is not wired.
     return {
       value: null,
-      trend: 0,
+      trend: null,
       trendValue: '—',
+      target: null,
       status: 'not_available',
-      message: 'Satisfaction metric not yet wired to a real data source',
+      message: 'Satisfaction metric is not implemented until a real survey data source is wired.',
       dataSource: 'not_implemented',
     };
   }
@@ -2135,15 +2190,12 @@ class MetricsCalculatorService {
   }
 
   estimateBusinessValue(workItem) {
-    // Mock business value calculation
-    const priorityMultiplier = {
-      1: 5,   // Critical
-      2: 4,   // High
-      3: 3,   // Medium
-      4: 2    // Low
-    };
-    
-    return priorityMultiplier[workItem.priority] || 2;
+    // Mock business-value heuristic removed 2026-05-24. This derived a fabricated
+    // 1-5 score from priority alone, which is not real business value. No caller
+    // exists; surface an honest error if it is ever reintroduced into a code path.
+    const err = new Error('estimateBusinessValue: real Azure DevOps business value field required; mock heuristic removed 2026-05-24');
+    err.code = 'NOT_IMPLEMENTED';
+    throw err;
   }
 
   calculateCompletionRate(workItems) {
@@ -2157,25 +2209,13 @@ class MetricsCalculatorService {
   }
 
   async getHistoricalSprints(range, productId) {
-    // Mock implementation using Delivery format to match PMP/DaaS conventions
-    const sprints = [];
-    
-    // DaaS-aware delivery numbering
-    const currentDelivery = (productId === 'Product - Data as a Service') ? 12 : 4;
-    
-    for (let i = 0; i < range; i++) {
-      const deliveryNumber = currentDelivery - i; // Start from current and go backwards
-      if (deliveryNumber > 0) { // Only create deliveries with valid numbers
-        sprints.push({
-          id: `delivery-${deliveryNumber}`,
-          name: `Delivery ${deliveryNumber}`,
-          number: deliveryNumber,
-          startDate: new Date(Date.now() - (i + 1) * 14 * 24 * 60 * 60 * 1000).toISOString(),
-          endDate: new Date(Date.now() - i * 14 * 24 * 60 * 60 * 1000).toISOString()
-        });
-      }
-    }
-    return sprints;
+    // Mock implementation removed 2026-05-24. This fabricated Delivery numbers and
+    // synthetic 14-day-spaced dates that masqueraded as real sprint history.
+    // Real history must come from azureService.iterationResolver.getProjectIterations.
+    // No caller exists; throw honestly if reintroduced into a code path.
+    const err = new Error('getHistoricalSprints: real Azure DevOps iteration history required; mock removed 2026-05-24');
+    err.code = 'NOT_IMPLEMENTED';
+    throw err;
   }
 
   async getSprintData(sprintId, productId) {
@@ -2246,135 +2286,29 @@ class MetricsCalculatorService {
         }
       }
 
-      console.warn(`⚠️ SPRINT DATA: No real iteration found for ${sprintId}/${productId}, falling back to mock data`);
+      console.warn(`⚠️ SPRINT DATA: No real iteration found for ${sprintId}/${productId}`);
     } catch (error) {
       console.error(`❌ SPRINT DATA: Error fetching real iteration data for ${sprintId}/${productId}:`, error.message);
     }
 
-    // 🔄 FALLBACK: Updated mock data with correct dates as last resort
-    if (productId === 'Product - Data as a Service') {
-      return {
-        id: sprintId || 'current',
-        name: 'Delivery 13',
-        startDate: '2025-09-08T00:00:00.000Z', // ✅ FIXED: Correct DaaS Delivery 13 dates
-        endDate: '2025-09-20T00:00:00.000Z'
-      };
-    }
-    
-    // PMP default sprint data  
-    return {
-      id: sprintId || 'current',
-      name: 'Delivery 6',
-      startDate: '2025-09-23T00:00:00.000Z', // Current PMP iteration
-      endDate: '2025-10-04T00:00:00.000Z'
-    };
+    // Fabricated fallback (hardcoded "Delivery 13" / "Delivery 6" with synthetic dates)
+    // removed 2026-05-24. Return null so callers surface "no sprint data" honestly
+    // instead of charting invented dates as if they were real.
+    return null;
   }
 
   /**
-   * Generate mock work items for burndown chart when real data is not available
+   * Fabricated burndown work-item generator — REMOVED 2026-05-24.
+   *
+   * This produced hardcoded "Delivery 11/PMP" work items (fixed IDs, story points
+   * and dates) that masqueraded as real Azure DevOps data. It has no callers; the
+   * burndown path consumes real work items only. Throw loudly if reintroduced.
    * @param {string} productId - Product identifier
-   * @returns {Array} Mock work items with story points and completion status
    */
   generateMockBurndownWorkItems(productId) {
-    // ✅ FIXED: DaaS-specific mock data to match REAL Azure DevOps Delivery 11 data (21 total story points)
-    if (productId === 'Product - Data as a Service') {
-      return [
-        {
-          id: 50873, // Real Azure DevOps work item ID
-          storyPoints: 3, // Real story points from Azure DevOps
-          state: 'Closed',
-          completedDate: '2025-08-20',
-          title: 'Deploy CFM Price and Promotion for Substitution',
-          type: 'User Story',
-          assignee: 'Data Team'
-        },
-        {
-          id: 51238,
-          storyPoints: 2,
-          state: 'Closed',
-          completedDate: '2025-08-18',
-          title: 'Product API GraphQL Performance Test',
-          type: 'User Story',
-          assignee: 'QA Team'
-        },
-        {
-          id: 51553,
-          storyPoints: 3,
-          state: 'Closed',
-          completedDate: '2025-08-15',
-          title: 'JDA Store Master',
-          type: 'User Story',
-          assignee: 'Backend Team'
-        },
-        {
-          id: 51777,
-          storyPoints: 3,
-          state: 'Closed',
-          completedDate: '2025-08-17',
-          title: 'Hierarchy API',
-          type: 'User Story',
-          assignee: 'API Team'
-        },
-        {
-          id: 51779,
-          storyPoints: 3,
-          state: 'Closed',
-          completedDate: '2025-08-19',
-          title: 'Brand API',
-          type: 'User Story',
-          assignee: 'API Team'
-        },
-        {
-          id: 51786,
-          storyPoints: 3,
-          state: 'Closed',
-          completedDate: '2025-08-16',
-          title: 'Store API',
-          type: 'User Story',
-          assignee: 'API Team'
-        },
-        {
-          id: 51890,
-          storyPoints: 3,
-          state: 'Closed',
-          completedDate: '2025-08-21',
-          title: 'Upfront Store Master',
-          type: 'User Story',
-          assignee: 'Backend Team'
-        },
-        {
-          id: 52237,
-          storyPoints: 1,
-          state: 'Closed',
-          completedDate: '2025-08-14',
-          title: 'Subscription for Mendix to use Master API',
-          type: 'User Story',
-          assignee: 'Integration Team'
-        }
-        // Total: 3+2+3+3+3+3+3+1 = 21 story points (matches Azure DevOps)
-        // Bug work items (50562, 52172, 52173, 52262) don't have story points
-      ];
-    }
-    
-    // ✅ PMP-specific mock data to show 222 total story points (matches expected velocity)
-    if (productId === 'Product - Partner Management Platform' || productId === 'Product+-+Partner+Management+Platform') {
-      return [
-        { id: 1, storyPoints: 45, state: 'Completed', completedDate: '2025-08-26' },
-        { id: 2, storyPoints: 38, state: 'Completed', completedDate: '2025-08-27' },
-        { id: 3, storyPoints: 42, state: 'Completed', completedDate: '2025-08-28' },
-        { id: 4, storyPoints: 35, state: 'Active', completedDate: null },
-        { id: 5, storyPoints: 62, state: 'Active', completedDate: null }, // Large feature still in progress
-        // Total: 45+38+42+35+62 = 222 story points
-      ];
-    }
-    
-    // Default mock data for other products
-    return [
-      { id: 1, storyPoints: 25, state: 'Completed', completedDate: '2025-08-26' },
-      { id: 2, storyPoints: 20, state: 'Active', completedDate: null },
-      { id: 3, storyPoints: 15, state: 'Completed', completedDate: '2025-08-28' },
-      { id: 4, storyPoints: 18, state: 'Active', completedDate: null },
-    ];
+    const err = new Error('generateMockBurndownWorkItems: fabricated burndown data removed 2026-05-24; use real Azure DevOps work items');
+    err.code = 'NOT_IMPLEMENTED';
+    throw err;
   }
 
   /**
@@ -2383,52 +2317,66 @@ class MetricsCalculatorService {
    * @returns {Promise<object>} Team information
    */
   async getTeamInfo(teamId) {
-    try {
-      // For now, return mock team data. In production, this would query Azure DevOps Teams API
-      const teamData = {
-        id: teamId,
-        name: `Team ${teamId}`,
-        members: [],
-        capacity: 40,
-        lead: 'Team Lead'
-      };
+    // Honest contract (2026-05-24): derive members from REAL Azure DevOps work-item
+    // assignments only. Fabricated fields (capacity: 40, lead: 'Team Lead'/'Unknown',
+    // name: `Team ${id}`) removed — they masqueraded as real team configuration.
+    const dataSource = 'azure_devops_work_items_assigned_to';
+    const notAvailable = (extra = {}) => ({
+      id: teamId,
+      name: teamId,
+      status: 'not_available',
+      dataSource,
+      isHidden: true,
+      members: [],
+      message: 'No Azure DevOps team member data is available for this team.',
+      ...extra
+    });
 
-      // Get unique team members from work items
+    try {
       const allWorkItems = await this.azureService.getWorkItems({
         maxResults: 1000,
         workItemTypes: ['Task', 'Bug']
       });
 
-      if (allWorkItems && allWorkItems.workItems) {
-        const uniqueMembers = new Map();
-        
+      const uniqueMembers = new Map();
+      if (allWorkItems && Array.isArray(allWorkItems.workItems)) {
         allWorkItems.workItems.forEach(item => {
           if (item.assignedTo && item.assignedTo.displayName) {
-            const member = {
-              id: item.assignedTo.uniqueName || item.assignedTo.displayName,
-              name: item.assignedTo.displayName,
-              email: item.assignedTo.uniqueName,
-              avatar: item.assignedTo._links?.avatar?.href || null
-            };
-            uniqueMembers.set(member.id, member);
+            const id = item.assignedTo.uniqueName || item.assignedTo.displayName;
+            const existing = uniqueMembers.get(id);
+            const avatar = item.assignedTo._links?.avatar?.href || null;
+            if (!existing) {
+              uniqueMembers.set(id, {
+                id,
+                name: item.assignedTo.displayName,
+                displayName: item.assignedTo.displayName,
+                email: item.assignedTo.uniqueName || null,
+                avatar
+              });
+            } else if (!existing.avatar && avatar) {
+              // Preserve the first available avatar across this member's work items.
+              existing.avatar = avatar;
+            }
           }
         });
-
-        teamData.members = Array.from(uniqueMembers.values());
       }
 
-      return teamData;
-    } catch (error) {
-      console.error(`Error getting team info for ${teamId}:`, error);
-      // Return minimal fallback data
+      const members = Array.from(uniqueMembers.values());
+      if (members.length === 0) {
+        return notAvailable();
+      }
+
       return {
         id: teamId,
-        name: `Team ${teamId}`,
-        members: [],
-        capacity: 40,
-        lead: 'Unknown',
-        error: error.message
+        name: teamId,
+        status: 'ok',
+        dataSource,
+        isHidden: false,
+        members
       };
+    } catch (error) {
+      console.error(`Error getting team info for ${teamId}:`, error);
+      return notAvailable({ error: error.message });
     }
   }
 

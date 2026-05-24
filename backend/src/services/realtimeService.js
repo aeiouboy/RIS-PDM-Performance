@@ -635,12 +635,21 @@ class RealtimeService extends EventEmitter {
   }
 
   /**
-   * Calculate simple hash for data comparison
+   * Calculate simple hash for data comparison.
+   *
+   * Volatile per-response fields (lastUpdated, timestamp, generatedAt, lastSync) are
+   * stripped before hashing. The metric payloads stamp a fresh `lastUpdated` on every
+   * read, so without this the hash changed on every poll — defeating change detection
+   * and either spamming SSE updates or masking real changes. Hashing only the payload
+   * shape means an SSE event fires when (and only when) the underlying data actually
+   * changes.
    * @param {object} data - Data to hash
    * @returns {string} Hash string
    */
   calculateDataHash(data) {
-    const jsonString = JSON.stringify(data, Object.keys(data).sort());
+    const VOLATILE_FIELDS = new Set(['lastUpdated', 'timestamp', 'generatedAt', 'lastSync']);
+    const replacer = (key, value) => (VOLATILE_FIELDS.has(key) ? undefined : value);
+    const jsonString = JSON.stringify(data, replacer);
     let hash = 0;
     for (let i = 0; i < jsonString.length; i++) {
       const char = jsonString.charCodeAt(i);
