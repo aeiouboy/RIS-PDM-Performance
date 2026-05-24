@@ -23,7 +23,10 @@ const DEV_BYPASS_USER = {
   email: 'dev@localhost',
   name: 'Dev User',
   department: 'Engineering',
-  roles: ['admin'],
+  // Roles MUST match the PascalCase strings the app checks (requireRoles + roles.includes
+  // call sites all use 'Admin'/'Manager'/'ProductManager'). Lowercase 'admin' silently
+  // failed every role gate → 403 on /api/users etc. Grant the full set for local dev.
+  roles: ['Admin', 'Manager', 'ProductManager'],
   permissions: ['read', 'write', 'admin'],
 };
 let _warnedAuthBypass = false;
