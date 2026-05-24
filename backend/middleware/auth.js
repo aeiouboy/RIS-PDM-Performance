@@ -17,8 +17,44 @@ const msalConfig = {
  * Authentication middleware for Azure AD
  * Validates Bearer tokens from Azure AD
  */
+// Dev-only synthetic user used when no valid token is supplied on localhost.
+const DEV_BYPASS_USER = {
+  id: 'dev-user',
+  email: 'dev@localhost',
+  name: 'Dev User',
+  department: 'Engineering',
+  roles: ['admin'],
+  permissions: ['read', 'write', 'admin'],
+};
+let _warnedAuthBypass = false;
+
 const authMiddleware = async (req, res, next) => {
   try {
+    // DEV-ONLY auth bypass — active ONLY when NODE_ENV === 'development' (localhost).
+    // Railway/production runs NODE_ENV=production, so this entire block is dead there
+    // and the original production auth path below is reached unchanged.
+    // A real Bearer token is still honored when present; only its absence/invalidity
+    // falls back to a synthetic dev user so you don't need the Google login locally.
+    if (process.env.NODE_ENV === 'development') {
+      const h = req.headers.authorization;
+      const devToken = h && h.startsWith('Bearer ') ? h.substring(7) : null;
+      if (devToken) {
+        const r = await validateAzureToken(devToken);
+        if (r.valid) {
+          req.user = r.user;
+          req.token = devToken;
+          return next();
+        }
+      }
+      if (!_warnedAuthBypass) {
+        logger.warn('⚠️  AUTH BYPASS ACTIVE (NODE_ENV=development): unauthenticated requests are treated as dev-user. This NEVER runs in production.');
+        _warnedAuthBypass = true;
+      }
+      req.user = DEV_BYPASS_USER;
+      req.token = 'dev-bypass';
+      return next();
+    }
+
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {

@@ -98,6 +98,22 @@ export const UserProvider = memo(({ children }) => {
     const restoreSession = async () => {
       const token = localStorage.getItem(AUTH_TOKEN_KEY);
       if (!token) {
+        // DEV-ONLY bypass: on the Vite dev server (import.meta.env.DEV), skip the
+        // Google login and auto-authenticate as a dev user. The backend applies a
+        // matching NODE_ENV==='development' bypass, so API calls succeed with this
+        // placeholder token. Production builds (Railway) have DEV === false, so the
+        // normal login flow is used there.
+        if (import.meta.env.DEV) {
+          localStorage.setItem(AUTH_TOKEN_KEY, 'dev-bypass');
+          setUser(userFromClaims({
+            sub: 'dev-user',
+            email: 'dev@localhost',
+            name: 'Dev User',
+            department: 'Engineering',
+            role: 'admin',
+            permissions: ['read', 'write', 'admin'],
+          }));
+        }
         setLoading(false);
         return;
       }
